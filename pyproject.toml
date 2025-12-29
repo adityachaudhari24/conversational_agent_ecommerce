@@ -87,6 +87,9 @@ ingest-data = "src.scripts.data_ingestion:main"
 run-api = "src.scripts.run_api:main"
 run-frontend = "src.scripts.run_frontend:main"
 
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
 [tool.black]
 line-length = 88
 target-version = ['py311']

@@ -19,4 +19,30 @@ source .venv/bin/activate
 
 
  ## Step 2 - Creating Data Ingestion pipeline
- Techno-Functional Specification for this pipeline is under "specs/data-ingestion-pipeline" folder
+* Techno-Functional Specification for this pipeline is under ".kiro/specs/data-ingestion-pipeline" folder.
+* using "RecursiveCharacterTextSplitter" for chunking - we have chosen this to keep sementic coherance and context preservation specially because recursive splitting split by separaters.
+* For better visualizing what actually goes in into vector database check "scripts/ingestion" visualization python scripts this gives good idea on what goes in to the vector DB.
+
+* use below commands to run entire data ingestion pipeline -
+```bash
+# below is for dry run
+python -m src.pipelines.ingestion --dry-run
+
+# below will actually create the embeddings in the pinecone
+python -m src.pipelines.ingestion
+
+
+# With custom data file and verbose logging
+python -m src.pipelines.ingestion --data-file data/phones_reviews.csv --log-level DEBUG
+
+# With custom configuration file
+python -m src.pipelines.ingestion --config config/ingestion.yaml
+
+# With custom parameters
+python -m src.pipelines.ingestion --batch-size 50 --abort-threshold 0.3
+```
+
+ #### running tests for Data Ingestion Pipeline commands
+ 1. python -m pytest tests/unit/test_document_loader.py::TestDocumentLoaderUni
+tTests -v
+ 2. python -m pytest tests/unit/test_document_loader.py -v

@@ -1,7 +1,7 @@
 # Technology Stack & Build System
 
 ## Package Management
-- **Primary**: `uv` - Modern Python package manager for fast, reliable dependency management
+- **Primary**: `uv` - Modern Python package manager for fast, reliable dependency management. To install any library you can use command "uv pip install <package-name>" in terminal
 - **Python Version**: 3.11+ recommended for optimal performance
 
 ## Core Technologies
