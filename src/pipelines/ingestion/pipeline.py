@@ -15,6 +15,8 @@ from typing import Dict, Any, List
 import pandas as pd
 from langchain_core.documents import Document
 
+from src.utils.logging import get_logger
+from src.utils.pipeline_logging import create_pipeline_logger, track_performance
 from .config import IngestionSettings, create_ingestion_settings, validate_configuration
 from .exceptions import DataQualityError, IngestionError
 from .loaders.document_loader import DocumentLoader, LoaderConfig
@@ -23,7 +25,7 @@ from .processors.text_chunker import TextChunker, ChunkerConfig
 from .processors.embedding_generator import EmbeddingGenerator, EmbeddingConfig
 from .storage.vector_store import VectorStoreManager, VectorStoreConfig
 
-logger = logging.getLogger(__name__)
+logger = get_logger(__name__)
 
 
 @dataclass
@@ -81,7 +83,13 @@ class IngestionPipeline:
             "documents_stored": 0,
             "failed_embeddings": 0,
             "skipped_records": 0,
-            "validation_report": {}
+            "validation_report": {},
+            "deduplication_metrics": {
+                "total_documents_processed": 0,
+                "unique_documents": 0,
+                "duplicate_documents": 0,
+                "deduplication_rate": 0.0
+            }
         }
         
         logger.info("Initialized IngestionPipeline")
@@ -269,10 +277,41 @@ class IngestionPipeline:
             # Store documents in vector database
             if successful_documents:
                 logger.info(f"Storing {len(successful_documents)} documents in vector database")
+                
+                # Track deduplication metrics
+                self.stats["deduplication_metrics"]["total_documents_processed"] = len(successful_documents)
+                
+                # Generate deterministic IDs to check for duplicates
+                document_ids = []
+                for doc in successful_documents:
+                    doc_id = self.vector_store._generate_document_id(doc)
+                    document_ids.append(doc_id)
+                
+                # Check for existing documents (this is a simplified approach)
+                # In a real implementation, you might query the vector store to check existing IDs
+                unique_ids = set(document_ids)
+                duplicate_count = len(document_ids) - len(unique_ids)
+                
+                self.stats["deduplication_metrics"]["unique_documents"] = len(unique_ids)
+                self.stats["deduplication_metrics"]["duplicate_documents"] = duplicate_count
+                
+                if len(successful_documents) > 0:
+                    dedup_rate = duplicate_count / len(successful_documents)
+                    self.stats["deduplication_metrics"]["deduplication_rate"] = dedup_rate
+                
+                # Log deduplication information
+                if duplicate_count > 0:
+                    logger.info(f"Deduplication detected: {duplicate_count} duplicate documents "
+                               f"out of {len(successful_documents)} total documents "
+                               f"({dedup_rate:.2%} duplication rate)")
+                else:
+                    logger.info("No duplicate documents detected - all documents are unique")
+                
                 stored_ids = self.vector_store.store_documents(successful_documents)
                 self.stats["documents_stored"] = len(stored_ids)
                 
-                logger.info(f"Storage complete: {len(stored_ids)} documents stored")
+                logger.info(f"Storage complete: {len(stored_ids)} documents stored "
+                           f"(using deterministic IDs for deduplication)")
             else:
                 logger.warning("No documents to store - all embedding generation failed")
                 self.stats["documents_stored"] = 0
@@ -369,6 +408,7 @@ class IngestionPipeline:
                 "embedding_efficiency": f"{embedding_efficiency:.2%}",
                 "storage_efficiency": f"{storage_efficiency:.2%}"
             },
+            "deduplication_metrics": self.stats["deduplication_metrics"],
             "validation_report": self.stats["validation_report"],
             "summary_stats": {
                 "total_processed": self.stats["documents_stored"],

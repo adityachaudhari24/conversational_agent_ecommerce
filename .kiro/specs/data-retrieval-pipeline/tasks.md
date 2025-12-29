@@ -20,10 +20,18 @@ This implementation plan breaks down the Data Retrieval Pipeline into discrete c
   - [ ] 1.3 Create configuration schema and loader
     - Create `src/pipelines/retrieval/config.py`
     - Implement RetrievalSettings using Pydantic BaseSettings
-    - Add YAML config loading support
+    - Implement ConfigurationLoader class with YAML config support
+    - Add environment variable validation and error handling
     - _Requirements: 8.1, 8.2, 8.4, 8.5_
 
-  - [ ]* 1.4 Write property test for missing environment variable detection
+  - [ ] 1.4 Implement structured logging system
+    - Create `src/pipelines/retrieval/logging.py`
+    - Implement RetrievalLogger class with structured logging methods
+    - Add performance monitoring decorator
+    - Integrate with project's logging configuration
+    - _Requirements: 9.1, 4.5, 7.5_
+
+  - [ ]* 1.5 Write property test for missing environment variable detection
     - **Property 11: Missing Environment Variable Detection**
     - **Validates: Requirements 8.3**
 
@@ -131,9 +139,11 @@ This implementation plan breaks down the Data Retrieval Pipeline into discrete c
 
 - [ ] 11. Implement RAGAS Evaluation
   - [ ] 11.1 Create evaluation module
+    - Create `src/pipelines/retrieval/evaluation/` directory with `__init__.py`
     - Create `src/pipelines/retrieval/evaluation/ragas_eval.py`
-    - Implement evaluate_context_precision(), evaluate_response_relevancy()
-    - Implement batch_evaluate() for testing datasets
+    - Implement EvaluationConfig, EvaluationResult dataclasses
+    - Implement RAGASEvaluator class with evaluate_single() and batch_evaluate()
+    - Integrate with RAGAS framework for context_precision and answer_relevancy
     - _Requirements: 10.1, 10.2, 10.3, 10.4_
 
   - [ ]* 11.2 Write property test for evaluation scores inclusion
@@ -144,23 +154,34 @@ This implementation plan breaks down the Data Retrieval Pipeline into discrete c
   - [ ] 12.1 Create response schemas
     - Create `src/pipelines/retrieval/models.py`
     - Implement DocumentScore, RetrievalMetadata, EvaluationScores, RetrievalResponse
+    - Include enhanced EvaluationScores with evaluation_time_ms and error fields
     - _Requirements: 7.3_
+
+- [ ] 13. Create sample configuration files
+  - [ ] 13.1 Create YAML configuration template
+    - Create `config/retrieval.yaml` with sample configuration
+    - Document all configuration options with comments
+    - _Requirements: 8.1, 8.4_
 
 - [ ] 13. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 14. Create test fixtures and integration tests
-  - [ ] 14.1 Create test fixtures
+- [ ] 14. Checkpoint - Ensure all tests pass
+  - Ensure all tests pass, ask the user if questions arise.
+
+- [ ] 15. Create test fixtures and integration tests
+  - [ ] 15.1 Create test fixtures
     - Create `tests/fixtures/sample_queries.json` with test queries
     - Create `tests/fixtures/mock_documents.json` with mock search results
     - _Requirements: 2.1, 7.3_
 
-  - [ ]* 14.2 Write integration test for full retrieval pipeline
+  - [ ]* 15.2 Write integration test for full retrieval pipeline
     - Test complete retrieval flow with sample queries
     - Verify caching, compression, and formatting
-    - _Requirements: 7.1, 7.2_
+    - Test logging integration and structured output
+    - _Requirements: 7.1, 7.2, 9.1_
 
-- [ ] 15. Final checkpoint - Ensure all tests pass
+- [ ] 16. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
 ## Notes
@@ -171,3 +192,6 @@ This implementation plan breaks down the Data Retrieval Pipeline into discrete c
 - Property tests validate universal correctness properties
 - External API calls (Pinecone, OpenAI, LLM) should be mocked in unit tests
 - The retrieval pipeline depends on the ingestion pipeline for populated vector store
+- Structured logging should integrate with the project's centralized logging system in `config/logging.yaml`
+- YAML configuration files should be created in the `config/` directory
+- All components should include proper error handling and logging integration

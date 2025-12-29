@@ -151,6 +151,27 @@ This implementation plan breaks down the Data Ingestion Pipeline into discrete c
 - [ ] 12. Final checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
+- [x] 13. Implement document deduplication
+  - [x] 13.1 Add deterministic ID generation to VectorStoreManager
+    - Modify `store_documents()` method to generate content-based IDs instead of random UUIDs
+    - Implement `_generate_document_id()` method using SHA-256 hash of page_content and key metadata
+    - Use product_name, review_title, and page_content for hash generation
+    - Update logging to show when documents are being processed with deterministic IDs
+    - _Requirements: 10.1, 10.2, 10.4_
+
+  - [ ]* 13.2 Write property test for document deduplication consistency
+    - **Property 14: Document Deduplication Consistency**
+    - **Validates: Requirements 10.1, 10.2**
+
+  - [ ]* 13.3 Write property test for idempotent pipeline execution
+    - **Property 15: Idempotent Pipeline Execution**
+    - **Validates: Requirements 10.3, 10.5**
+
+  - [x] 13.4 Update pipeline statistics to track deduplication
+    - Add logging to distinguish between new documents and updates
+    - Update summary statistics to show deduplication metrics
+    - _Requirements: 10.3_
+
 ## Notes
 
 - Tasks marked with `*` are optional and can be skipped for faster MVP

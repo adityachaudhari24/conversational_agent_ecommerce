@@ -124,3 +124,15 @@ The Data Ingestion Pipeline is the foundational component of the Conversational 
 3. WHEN generating embeddings, THE Embedding_Generator SHALL validate that the embedding dimension matches expected size
 4. THE Ingestion_Pipeline SHALL provide a validation report summarizing skipped records and reasons
 5. WHEN more than 50% of records fail validation, THE Ingestion_Pipeline SHALL abort and raise a DataQualityError
+
+### Requirement 10: Document Deduplication
+
+**User Story:** As a data engineer, I want to prevent duplicate documents from being stored in the vector database, so that running the pipeline multiple times with the same data doesn't create redundant records.
+
+#### Acceptance Criteria
+
+1. WHEN storing documents, THE Vector_Store SHALL generate deterministic IDs based on document content and key metadata
+2. WHEN a document with the same content is processed multiple times, THE Vector_Store SHALL use the same ID for that document
+3. WHEN storing a document with an existing ID, THE Vector_Store SHALL use Pinecone's upsert behavior to overwrite the existing record
+4. THE Vector_Store SHALL generate document IDs using SHA-256 hash of page_content and key metadata fields (product_name, review_title)
+5. WHEN the pipeline is run multiple times with identical CSV data, THE Vector_Store SHALL maintain the same number of records without creating duplicates

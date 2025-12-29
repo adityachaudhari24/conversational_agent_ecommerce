@@ -5,6 +5,7 @@ This module provides functionality to store document embeddings in Pinecone
 vector database, including index management, batch operations, and error handling.
 """
 
+import hashlib
 import logging
 import uuid
 from dataclasses import dataclass
@@ -131,13 +132,13 @@ class VectorStoreManager:
         logger.info(f"Storing {len(documents)} documents in Pinecone")
         
         try:
-            # Prepare documents with IDs
+            # Prepare documents with deterministic IDs
             documents_with_ids = []
             document_ids = []
             
             for doc in documents:
-                # Generate unique ID for each document
-                doc_id = str(uuid.uuid4())
+                # Generate deterministic ID based on content and key metadata
+                doc_id = self._generate_document_id(doc)
                 document_ids.append(doc_id)
                 
                 # Prepare metadata for Pinecone (convert all values to strings)
@@ -149,6 +150,12 @@ class VectorStoreManager:
                     metadata=metadata
                 )
                 documents_with_ids.append(prepared_doc)
+                
+                # Log deterministic ID generation
+                logger.debug(f"Generated deterministic ID {doc_id[:8]}... for document with "
+                           f"product: {doc.metadata.get('product_name', 'N/A')}")
+            
+            logger.info(f"Processing {len(documents)} documents with deterministic IDs for deduplication")
             
             # Store documents using LangChain PineconeVectorStore
             stored_ids = self.vector_store.add_documents(
@@ -157,7 +164,7 @@ class VectorStoreManager:
                 namespace=self.config.namespace
             )
             
-            logger.info(f"Successfully stored {len(stored_ids)} documents in Pinecone")
+            logger.info(f"Successfully stored {len(stored_ids)} documents in Pinecone with deterministic IDs")
             return stored_ids
             
         except Exception as e:
@@ -202,6 +209,56 @@ class VectorStoreManager:
                 service="pinecone"
             )
     
+    def _generate_document_id(self, document: Document) -> str:
+        """
+        Generate a deterministic ID for a document based on content and key metadata.
+        
+        Uses SHA-256 hash of page_content, product_name, and review_title to ensure
+        that identical documents always get the same ID, enabling deduplication.
+        
+        Args:
+            document: Document to generate ID for
+            
+        Returns:
+            str: Deterministic document ID based on content hash
+        """
+        # Extract key fields for ID generation
+        page_content = document.page_content or ""
+        product_name = document.metadata.get("product_name", "")
+        review_title = document.metadata.get("review_title", "")
+        
+        # Create a string combining the key fields
+        id_string = f"{page_content}|{product_name}|{review_title}"
+        
+        # Generate SHA-256 hash
+        hash_object = hashlib.sha256(id_string.encode('utf-8'))
+        document_id = hash_object.hexdigest()
+        
+        return document_id
+        """
+        Prepare metadata for Pinecone storage by converting all values to strings.
+        
+        Pinecone requires metadata values to be strings, numbers, or booleans.
+        This method converts all values to strings for consistency.
+        
+        Args:
+            metadata: Original metadata dictionary
+            
+        Returns:
+            Dict[str, str]: Metadata with all values converted to strings
+        """
+        prepared_metadata = {}
+        
+        for key, value in metadata.items():
+            if value is None:
+                prepared_metadata[key] = "N/A"
+            elif isinstance(value, (str, int, float, bool)):
+                prepared_metadata[key] = str(value)
+            else:
+                # Convert complex types to string representation
+                prepared_metadata[key] = str(value)
+        
+        return prepared_metadata
     def _prepare_metadata(self, metadata: Dict[str, Any]) -> Dict[str, str]:
         """
         Prepare metadata for Pinecone storage by converting all values to strings.

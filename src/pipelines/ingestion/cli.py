@@ -13,12 +13,14 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from src.utils.logging import setup_logging, get_logger
+from src.utils.pipeline_logging import create_pipeline_logger
 from .config import create_ingestion_settings, validate_configuration
 from .pipeline import create_pipeline_from_settings
 from .exceptions import ConfigurationError, DataQualityError, IngestionError
 
 
-def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> None:
+def setup_cli_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> None:
     """
     Configure logging for CLI execution.
     
@@ -26,24 +28,14 @@ def setup_logging(log_level: str = "INFO", log_file: Optional[str] = None) -> No
         log_level: Logging level (DEBUG, INFO, WARNING, ERROR)
         log_file: Optional log file path
     """
-    # Configure log format
-    log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    # Use centralized logging setup
+    from src.utils.logging import setup_logging as core_setup_logging
     
-    # Set up handlers
-    handlers = [logging.StreamHandler(sys.stdout)]
-    
-    if log_file:
-        # Ensure log directory exists
-        log_path = Path(log_file)
-        log_path.parent.mkdir(parents=True, exist_ok=True)
-        handlers.append(logging.FileHandler(log_file))
-    
-    # Configure logging
-    logging.basicConfig(
-        level=getattr(logging, log_level.upper()),
-        format=log_format,
-        handlers=handlers,
-        force=True  # Override any existing configuration
+    core_setup_logging(
+        level=log_level,
+        log_file=log_file,
+        use_json=log_level.upper() == "DEBUG",  # Use JSON for debug mode
+        context={'component': 'ingestion_cli'}
     )
 
 
@@ -244,8 +236,14 @@ def run_pipeline_with_progress(pipeline, quiet: bool = False) -> dict:
     Returns:
         Pipeline execution summary
     """
+    # Create pipeline logger
+    pipeline_logger = create_pipeline_logger("ingestion")
+    
     if not quiet:
         print_progress_header()
+    
+    # Start pipeline tracking
+    pipeline_logger.start_pipeline()
     
     # Override pipeline methods to add progress reporting
     original_load = pipeline._load_stage
@@ -256,7 +254,11 @@ def run_pipeline_with_progress(pipeline, quiet: bool = False) -> dict:
     def load_with_progress():
         if not quiet:
             print_stage_progress("Data Loading")
-        result = original_load()
+        
+        with pipeline_logger.stage("data_loading"):
+            result = original_load()
+            pipeline_logger.log_stage_progress("data_loading", len(result), len(result))
+            
         if not quiet:
             print_stage_progress("Data Loading", "COMPLETE")
             print(f"    Loaded {len(result):,} records")
@@ -265,7 +267,11 @@ def run_pipeline_with_progress(pipeline, quiet: bool = False) -> dict:
     def transform_with_progress(df):
         if not quiet:
             print_stage_progress("Data Transformation")
-        result = original_transform(df)
+        
+        with pipeline_logger.stage("data_transformation"):
+            result = original_transform(df)
+            pipeline_logger.log_stage_progress("data_transformation", len(result), len(df))
+            
         if not quiet:
             print_stage_progress("Data Transformation", "COMPLETE")
             print(f"    Created {len(result):,} documents")
@@ -274,7 +280,11 @@ def run_pipeline_with_progress(pipeline, quiet: bool = False) -> dict:
     def chunk_with_progress(documents):
         if not quiet:
             print_stage_progress("Document Chunking")
-        result = original_chunk(documents)
+        
+        with pipeline_logger.stage("document_chunking"):
+            result = original_chunk(documents)
+            pipeline_logger.log_stage_progress("document_chunking", len(result), len(documents))
+            
         if not quiet:
             print_stage_progress("Document Chunking", "COMPLETE")
             print(f"    Generated {len(result):,} chunks")
@@ -283,7 +293,15 @@ def run_pipeline_with_progress(pipeline, quiet: bool = False) -> dict:
     def embed_with_progress(documents):
         if not quiet:
             print_stage_progress("Embedding & Storage")
-        original_embed(documents)
+        
+        with pipeline_logger.stage("embedding_storage"):
+            original_embed(documents)
+            pipeline_logger.log_stage_progress(
+                "embedding_storage", 
+                pipeline.stats['documents_stored'], 
+                len(documents)
+            )
+            
         if not quiet:
             print_stage_progress("Embedding & Storage", "COMPLETE")
             print(f"    Stored {pipeline.stats['documents_stored']:,} documents")
@@ -295,8 +313,12 @@ def run_pipeline_with_progress(pipeline, quiet: bool = False) -> dict:
     pipeline._embed_stage = embed_with_progress
     
     try:
-        return pipeline.run()
+        result = pipeline.run()
+        pipeline_logger.end_pipeline(success=True)
+        return result
     except Exception as e:
+        pipeline_logger.end_pipeline(success=False)
+        pipeline_logger.log_error("pipeline_execution", str(e))
         if not quiet:
             print_stage_progress("Pipeline Execution", "FAILED")
         raise
@@ -313,8 +335,8 @@ def main() -> int:
     args = parser.parse_args()
     
     # Set up logging
-    setup_logging(args.log_level, args.log_file)
-    logger = logging.getLogger(__name__)
+    setup_cli_logging(args.log_level, args.log_file)
+    logger = get_logger(__name__)
     
     try:
         # Display banner

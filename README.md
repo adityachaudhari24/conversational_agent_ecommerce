@@ -43,6 +43,10 @@ python -m src.pipelines.ingestion --batch-size 50 --abort-threshold 0.3
 ```
 
  #### running tests for Data Ingestion Pipeline commands
+ ```bash
  1. python -m pytest tests/unit/test_document_loader.py::TestDocumentLoaderUni
 tTests -v
  2. python -m pytest tests/unit/test_document_loader.py -v
+ #run all tests 
+ 3. uv run pytest tests/unit/ -v
+ ```

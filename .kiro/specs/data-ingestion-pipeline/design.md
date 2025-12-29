@@ -494,6 +494,18 @@ class IngestionSettings(BaseSettings):
 
 **Validates: Requirements 6.4**
 
+### Property 14: Document Deduplication Consistency
+
+*For any* document with identical page_content and key metadata (product_name, review_title), the Vector_Store SHALL generate the same deterministic ID regardless of when or how many times the document is processed.
+
+**Validates: Requirements 10.1, 10.2**
+
+### Property 15: Idempotent Pipeline Execution
+
+*For any* CSV dataset, running the ingestion pipeline multiple times SHALL result in the same final state in the vector database (same number of records, same content) without creating duplicate entries.
+
+**Validates: Requirements 10.3, 10.5**
+
 ## Error Handling
 
 ### Custom Exception Hierarchy

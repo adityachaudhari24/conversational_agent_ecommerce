@@ -142,37 +142,37 @@ class TestVectorStoreManager:
         
         assert result == []
     
-    @patch('src.pipelines.ingestion.storage.vector_store.uuid.uuid4')
-    def test_store_documents_success(self, mock_uuid, vector_store_manager):
-        """Test successful document storage."""
+    def test_store_documents_success(self, vector_store_manager):
+        """Test successful document storage with deterministic IDs."""
         # Setup mocks
         mock_vector_store = Mock()
         vector_store_manager.vector_store = mock_vector_store
         
-        mock_uuid.side_effect = [
-            Mock(__str__=lambda x: "id-1"),
-            Mock(__str__=lambda x: "id-2")
-        ]
-        
-        mock_vector_store.add_documents.return_value = ["id-1", "id-2"]
-        
         # Create test documents
         documents = [
-            Document(page_content="content 1", metadata={"key": "value1"}),
-            Document(page_content="content 2", metadata={"key": "value2"})
+            Document(page_content="content 1", metadata={"product_name": "Product A", "review_title": "Great"}),
+            Document(page_content="content 2", metadata={"product_name": "Product B", "review_title": "Good"})
         ]
+        
+        # Generate expected deterministic IDs
+        expected_ids = [
+            vector_store_manager._generate_document_id(documents[0]),
+            vector_store_manager._generate_document_id(documents[1])
+        ]
+        
+        mock_vector_store.add_documents.return_value = expected_ids
         
         # Call store_documents
         result = vector_store_manager.store_documents(documents)
         
         # Verify results
-        assert result == ["id-1", "id-2"]
+        assert result == expected_ids
         
         # Verify add_documents was called correctly
         mock_vector_store.add_documents.assert_called_once()
         call_args = mock_vector_store.add_documents.call_args
         
-        assert call_args[1]["ids"] == ["id-1", "id-2"]
+        assert call_args[1]["ids"] == expected_ids
         assert call_args[1]["namespace"] == "phone-reviews"
         assert len(call_args[1]["documents"]) == 2
     

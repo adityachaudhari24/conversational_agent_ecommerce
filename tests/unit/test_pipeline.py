@@ -120,7 +120,8 @@ class TestIngestionPipeline:
     @patch('src.pipelines.ingestion.pipeline.time.time')
     def test_get_summary_with_stats(self, mock_time, sample_config):
         """Test get_summary returns correct statistics after execution."""
-        mock_time.side_effect = [1000.0, 1010.0]  # 10 second execution
+        # Return a consistent time value for all calls
+        mock_time.return_value = 1000.0
         
         pipeline = IngestionPipeline(sample_config)
         pipeline.stats.update({
@@ -134,7 +135,13 @@ class TestIngestionPipeline:
             "documents_stored": 90,
             "skipped_records": 5,
             "failed_embeddings": 8,
-            "validation_report": {"total_skipped": 5}
+            "validation_report": {"total_skipped": 5},
+            "deduplication_metrics": {
+                "total_documents_processed": 90,
+                "unique_documents": 85,
+                "duplicate_documents": 5,
+                "deduplication_rate": 0.056
+            }
         })
         
         summary = pipeline.get_summary()
@@ -145,6 +152,13 @@ class TestIngestionPipeline:
         assert summary["execution_time"]["duration_seconds"] == 10.0
         assert "95.00%" in summary["efficiency_metrics"]["processing_efficiency"]
         assert summary["summary_stats"]["total_processed"] == 90
+        
+        # Check deduplication metrics
+        assert "deduplication_metrics" in summary
+        assert summary["deduplication_metrics"]["total_documents_processed"] == 90
+        assert summary["deduplication_metrics"]["unique_documents"] == 85
+        assert summary["deduplication_metrics"]["duplicate_documents"] == 5
+        assert summary["deduplication_metrics"]["deduplication_rate"] == 0.056
 
 
 class TestPipelineFromSettings:

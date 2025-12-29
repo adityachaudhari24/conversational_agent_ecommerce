@@ -209,3 +209,6 @@ __marimo__/
 #test files to skip
 /reference_project_files/
 /reference_project_files*
+
+#logs folder
+logs/

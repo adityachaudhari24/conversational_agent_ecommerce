@@ -385,6 +385,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Dict, Any, List
 from datetime import datetime
 import asyncio
+import logging
 
 @dataclass
 class RetrievalConfig:
@@ -419,6 +420,8 @@ class RetrievalPipeline:
         self.query_rewriter = None
         self.document_formatter = None
         self.cache = None
+        self.evaluator = None
+        self.logger = logging.getLogger(__name__)
     
     def initialize(self) -> None:
         """Initialize all pipeline components."""
@@ -456,6 +459,105 @@ class RetrievalPipeline:
     ) -> Dict[str, float]:
         """Compute RAGAS evaluation metrics."""
         pass
+
+### 8. RAGAS Evaluation Component
+
+Evaluates retrieval quality using RAGAS metrics.
+
+```python
+from dataclasses import dataclass
+from typing import List, Dict, Any, Optional
+from ragas import evaluate
+from ragas.metrics import context_precision, answer_relevancy
+import pandas as pd
+
+@dataclass
+class EvaluationConfig:
+    enabled: bool = False
+    metrics: List[str] = field(default_factory=lambda: ["context_precision", "answer_relevancy"])
+    batch_size: int = 10
+
+@dataclass
+class EvaluationResult:
+    context_precision: Optional[float] = None
+    answer_relevancy: Optional[float] = None
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+class RAGASEvaluator:
+    """Evaluates retrieval quality using RAGAS framework."""
+    
+    def __init__(self, config: EvaluationConfig, llm):
+        self.config = config
+        self.llm = llm
+        self.metrics_map = {
+            "context_precision": context_precision,
+            "answer_relevancy": answer_relevancy
+        }
+    
+    def evaluate_single(
+        self, 
+        query: str, 
+        contexts: List[str],
+        answer: Optional[str] = None
+    ) -> EvaluationResult:
+        """Evaluate a single query-context pair."""
+        if not self.config.enabled:
+            return EvaluationResult()
+        
+        try:
+            # Prepare data for RAGAS
+            data = {
+                "question": [query],
+                "contexts": [contexts],
+            }
+            
+            if answer:
+                data["answer"] = [answer]
+            
+            dataset = pd.DataFrame(data)
+            
+            # Select metrics to compute
+            metrics = [self.metrics_map[m] for m in self.config.metrics 
+                      if m in self.metrics_map]
+            
+            # Run evaluation
+            result = evaluate(dataset, metrics=metrics, llm=self.llm)
+            
+            return EvaluationResult(
+                context_precision=result.get("context_precision"),
+                answer_relevancy=result.get("answer_relevancy"),
+                metadata={"evaluation_time": datetime.utcnow().isoformat()}
+            )
+            
+        except Exception as e:
+            self.logger.warning(f"Evaluation failed: {str(e)}")
+            return EvaluationResult(
+                metadata={"error": str(e)}
+            )
+    
+    def batch_evaluate(
+        self, 
+        queries: List[str],
+        contexts_list: List[List[str]],
+        answers: Optional[List[str]] = None
+    ) -> List[EvaluationResult]:
+        """Evaluate multiple query-context pairs in batch."""
+        if not self.config.enabled:
+            return [EvaluationResult() for _ in queries]
+        
+        results = []
+        for i in range(0, len(queries), self.config.batch_size):
+            batch_queries = queries[i:i + self.config.batch_size]
+            batch_contexts = contexts_list[i:i + self.config.batch_size]
+            batch_answers = answers[i:i + self.config.batch_size] if answers else None
+            
+            for j, query in enumerate(batch_queries):
+                contexts = batch_contexts[j]
+                answer = batch_answers[j] if batch_answers else None
+                result = self.evaluate_single(query, contexts, answer)
+                results.append(result)
+        
+        return results
 ```
 
 ## Data Models
@@ -486,8 +588,10 @@ class RetrievalMetadata(BaseModel):
 
 class EvaluationScores(BaseModel):
     """RAGAS evaluation scores."""
-    context_precision: Optional[float] = None
-    response_relevancy: Optional[float] = None
+    context_precision: Optional[float] = Field(None, ge=0.0, le=1.0)
+    answer_relevancy: Optional[float] = Field(None, ge=0.0, le=1.0)
+    evaluation_time_ms: Optional[float] = Field(None, ge=0.0)
+    error: Optional[str] = None
 
 class RetrievalResponse(BaseModel):
     """Complete retrieval response."""
@@ -504,12 +608,14 @@ class RetrievalResponse(BaseModel):
 
 ```python
 from pydantic import BaseSettings, Field
-from typing import Optional
+from typing import Optional, Dict, Any
+import yaml
+from pathlib import Path
 
 class RetrievalSettings(BaseSettings):
     """Environment-based configuration for retrieval."""
     
-    # API Keys
+    # API Keys (from environment only)
     openai_api_key: str = Field(..., env="OPENAI_API_KEY")
     pinecone_api_key: str = Field(..., env="PINECONE_API_KEY")
     
@@ -546,6 +652,92 @@ class RetrievalSettings(BaseSettings):
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"
+
+class ConfigurationLoader:
+    """Loads configuration from YAML files and environment variables."""
+    
+    def __init__(self, config_path: Optional[str] = None):
+        self.config_path = config_path or "config/retrieval.yaml"
+    
+    def load_config(self) -> RetrievalSettings:
+        """Load configuration from YAML file and environment variables."""
+        yaml_config = self._load_yaml_config()
+        
+        # Merge YAML config with environment variables
+        # Environment variables take precedence
+        merged_config = {**yaml_config}
+        
+        try:
+            return RetrievalSettings(**merged_config)
+        except Exception as e:
+            missing_keys = self._extract_missing_keys(e)
+            raise ConfigurationError(
+                f"Configuration validation failed: {str(e)}", 
+                missing_keys=missing_keys
+            )
+    
+    def _load_yaml_config(self) -> Dict[str, Any]:
+        """Load configuration from YAML file."""
+        config_file = Path(self.config_path)
+        if not config_file.exists():
+            return {}  # Use defaults if no config file
+        
+        try:
+            with open(config_file, 'r') as f:
+                return yaml.safe_load(f) or {}
+        except yaml.YAMLError as e:
+            raise ConfigurationError(f"Invalid YAML configuration: {str(e)}")
+    
+    def _extract_missing_keys(self, error: Exception) -> List[str]:
+        """Extract missing required keys from validation error."""
+        # Parse Pydantic validation error to extract missing fields
+        missing_keys = []
+        error_str = str(error)
+        if "field required" in error_str:
+            # Extract field names from error message
+            import re
+            matches = re.findall(r"(\w+)\s*\n.*field required", error_str)
+            missing_keys.extend(matches)
+        return missing_keys
+
+# Example YAML Configuration File (config/retrieval.yaml)
+"""
+# Retrieval Pipeline Configuration
+search:
+  top_k: 4
+  fetch_k: 20
+  lambda_mult: 0.7
+  score_threshold: 0.6
+
+query:
+  max_query_length: 512
+
+compression:
+  enabled: true
+
+rewriter:
+  max_rewrite_attempts: 2
+  rewrite_threshold: 0.5
+
+cache:
+  enabled: true
+  ttl_seconds: 300
+  max_size: 1000
+
+retry:
+  max_retries: 3
+
+evaluation:
+  enabled: false
+  metrics:
+    - context_precision
+    - answer_relevancy
+  batch_size: 10
+
+logging:
+  level: INFO
+  structured: true
+"""
 ```
 
 
@@ -699,6 +891,144 @@ class ConfigurationError(RetrievalError):
         self.missing_keys = missing_keys or []
 ```
 
+### Structured Logging Integration
+
+The pipeline integrates with the project's centralized logging system defined in `config/logging.yaml`:
+
+```python
+import logging
+import structlog
+from typing import Dict, Any
+import time
+
+class RetrievalLogger:
+    """Structured logger for retrieval pipeline operations."""
+    
+    def __init__(self, component_name: str):
+        self.logger = structlog.get_logger(component_name)
+        self.component = component_name
+    
+    def log_query_processing(
+        self, 
+        query: str, 
+        processing_time_ms: float,
+        truncated: bool = False
+    ) -> None:
+        """Log query processing metrics."""
+        self.logger.info(
+            "query_processed",
+            component=self.component,
+            query_length=len(query),
+            processing_time_ms=processing_time_ms,
+            truncated=truncated
+        )
+    
+    def log_search_results(
+        self, 
+        query: str,
+        results_count: int,
+        search_time_ms: float,
+        filters_applied: Dict[str, Any] = None
+    ) -> None:
+        """Log vector search results."""
+        self.logger.info(
+            "search_completed",
+            component=self.component,
+            query_hash=hash(query) % 10000,  # Anonymized query identifier
+            results_count=results_count,
+            search_time_ms=search_time_ms,
+            filters_applied=filters_applied or {}
+        )
+    
+    def log_compression_results(
+        self, 
+        input_count: int,
+        output_count: int,
+        compression_time_ms: float
+    ) -> None:
+        """Log contextual compression results."""
+        self.logger.info(
+            "compression_completed",
+            component=self.component,
+            input_documents=input_count,
+            output_documents=output_count,
+            filtered_count=input_count - output_count,
+            compression_time_ms=compression_time_ms
+        )
+    
+    def log_cache_operation(
+        self, 
+        operation: str,  # "hit" or "miss" or "set"
+        query_hash: str,
+        cache_size: int = None
+    ) -> None:
+        """Log cache operations."""
+        self.logger.info(
+            "cache_operation",
+            component=self.component,
+            operation=operation,
+            query_hash=query_hash,
+            cache_size=cache_size
+        )
+    
+    def log_error(
+        self, 
+        error: Exception,
+        context: Dict[str, Any] = None
+    ) -> None:
+        """Log errors with context."""
+        self.logger.error(
+            "retrieval_error",
+            component=self.component,
+            error_type=type(error).__name__,
+            error_message=str(error),
+            context=context or {}
+        )
+    
+    def log_evaluation_metrics(
+        self, 
+        metrics: Dict[str, float],
+        evaluation_time_ms: float
+    ) -> None:
+        """Log RAGAS evaluation metrics."""
+        self.logger.info(
+            "evaluation_completed",
+            component=self.component,
+            **metrics,
+            evaluation_time_ms=evaluation_time_ms
+        )
+
+# Performance monitoring decorator
+def log_performance(operation_name: str):
+    """Decorator to log operation performance metrics."""
+    def decorator(func):
+        def wrapper(self, *args, **kwargs):
+            start_time = time.time()
+            try:
+                result = func(self, *args, **kwargs)
+                duration_ms = (time.time() - start_time) * 1000
+                
+                if hasattr(self, 'logger'):
+                    self.logger.log_performance(
+                        operation=operation_name,
+                        duration_ms=duration_ms,
+                        success=True
+                    )
+                return result
+            except Exception as e:
+                duration_ms = (time.time() - start_time) * 1000
+                if hasattr(self, 'logger'):
+                    self.logger.log_performance(
+                        operation=operation_name,
+                        duration_ms=duration_ms,
+                        success=False,
+                        error=str(e)
+                    )
+                raise
+        return wrapper
+    return decorator
+```
+
 ### Error Handling Strategy
 
 | Component | Error Type | Handling |
@@ -732,6 +1062,14 @@ class RetryConfig:
 - **Property Testing**: hypothesis for property-based tests
 - **Mocking**: unittest.mock for external API mocking
 - **Coverage**: pytest-cov with minimum 80% coverage target
+- **Dependencies**: 
+  - `ragas` for evaluation metrics
+  - `langchain` for document processing and LLM integration
+  - `pinecone-client` for vector database operations
+  - `openai` for embeddings API
+  - `structlog` for structured logging
+  - `pydantic` for data validation
+  - `pyyaml` for configuration loading
 
 ### Unit Tests
 

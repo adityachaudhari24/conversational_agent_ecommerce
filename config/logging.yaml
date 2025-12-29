@@ -1,0 +1,171 @@
+# Logging Configuration for E-commerce RAG Application
+# This configuration supports both development and production environments
+
+version: 1
+disable_existing_loggers: false
+
+formatters:
+  standard:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  
+  detailed:
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(module)s:%(funcName)s:%(lineno)d - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  
+  json:
+    (): src.utils.logging.JSONFormatter
+    datefmt: "%Y-%m-%d %H:%M:%S"
+  
+  colored:
+    (): src.utils.logging.ColoredFormatter
+    format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+    datefmt: "%Y-%m-%d %H:%M:%S"
+
+filters:
+  context_filter:
+    (): src.utils.logging.ContextFilter
+
+handlers:
+  console:
+    class: logging.StreamHandler
+    level: INFO
+    formatter: colored
+    stream: ext://sys.stdout
+  
+  file:
+    class: logging.handlers.RotatingFileHandler
+    level: DEBUG
+    formatter: standard
+    filename: logs/application.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf8
+  
+  json_file:
+    class: logging.handlers.RotatingFileHandler
+    level: INFO
+    formatter: json
+    filename: logs/application.json
+    maxBytes: 10485760  # 10MB
+    backupCount: 5
+    encoding: utf8
+  
+  error_file:
+    class: logging.handlers.RotatingFileHandler
+    level: ERROR
+    formatter: detailed
+    filename: logs/errors.log
+    maxBytes: 10485760  # 10MB
+    backupCount: 10
+    encoding: utf8
+
+loggers:
+  # Application loggers
+  src:
+    level: DEBUG
+    handlers: [console, file, json_file, error_file]
+    propagate: false
+  
+  # Pipeline-specific loggers
+  src.pipelines.ingestion:
+    level: INFO
+    handlers: [console, file, json_file]
+    propagate: false
+  
+  src.pipelines.retrieval:
+    level: INFO
+    handlers: [console, file, json_file]
+    propagate: false
+  
+  src.pipelines.inference:
+    level: INFO
+    handlers: [console, file, json_file]
+    propagate: false
+  
+  # API loggers
+  src.api:
+    level: INFO
+    handlers: [console, file, json_file]
+    propagate: false
+  
+  # Frontend loggers
+  src.frontend:
+    level: INFO
+    handlers: [console, file]
+    propagate: false
+  
+  # Third-party loggers (reduced verbosity)
+  httpx:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+  
+  httpcore:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+  
+  urllib3:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+  
+  chromadb:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+  
+  sentence_transformers:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+  
+  openai:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+  
+  pinecone:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+  
+  langchain:
+    level: WARNING
+    handlers: [file]
+    propagate: false
+
+root:
+  level: INFO
+  handlers: [console, file, error_file]
+
+# Environment-specific overrides
+development:
+  handlers:
+    console:
+      level: DEBUG
+      formatter: colored
+    file:
+      level: DEBUG
+      formatter: detailed
+  loggers:
+    src:
+      level: DEBUG
+
+production:
+  handlers:
+    console:
+      level: INFO
+      formatter: standard
+    file:
+      level: INFO
+      formatter: json
+    json_file:
+      level: INFO
+      formatter: json
+  loggers:
+    src:
+      level: INFO
+    root:
+      level: WARNING
