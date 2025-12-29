@@ -1,0 +1,43 @@
+# Retrieval Pipeline Configuration
+# Environment variables take precedence over these settings
+
+cache:
+  enabled: true
+  max_size: 1000
+  ttl_seconds: 300
+compression:
+  enabled: true
+  relevance_prompt: null
+embedding:
+  dimension: 3072
+  model: text-embedding-3-large
+evaluation:
+  batch_size: 10
+  enabled: false
+  metrics:
+  - context_precision
+  - answer_relevancy
+formatter:
+  delimiter: "\n\n---\n\n"
+  include_scores: false
+  max_context_length: 4000
+  template: null
+logging:
+  level: INFO
+  structured: true
+query:
+  max_query_length: 512
+  normalize_unicode: true
+retry:
+  delay_seconds: 1.0
+  max_retries: 3
+rewriter:
+  max_rewrite_attempts: 2
+  rewrite_prompt: null
+  rewrite_threshold: 0.5
+search:
+  fetch_k: 20
+  lambda_mult: 0.7
+  score_threshold: 0.6
+  search_type: mmr
+  top_k: 4

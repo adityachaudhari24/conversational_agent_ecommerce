@@ -18,7 +18,7 @@ source .venv/bin/activate
  For experiment only iphone data is extracted, all data loading from huggingface and data extraction steps are in the notebook "ecommerce_data.ipynb" in the codebase.
 
 
- ## Step 2 - Creating Data Ingestion pipeline
+ ## Step 2 -  Data Ingestion pipeline
 * Techno-Functional Specification for this pipeline is under ".kiro/specs/data-ingestion-pipeline" folder.
 * using "RecursiveCharacterTextSplitter" for chunking - we have chosen this to keep sementic coherance and context preservation specially because recursive splitting split by separaters.
 * For better visualizing what actually goes in into vector database check "scripts/ingestion" visualization python scripts this gives good idea on what goes in to the vector DB.
@@ -50,3 +50,20 @@ tTests -v
  #run all tests 
  3. uv run pytest tests/unit/ -v
  ```
+
+## Step 3 -  Data Retrieval pipeline
+* For retrieval pipeline design please check here 'https://github.com/adityachaudhari24/conversational_agent_ecommerce/blob/main/.kiro/specs/data-retrieval-pipeline/design.md'
+* If Metadata filters are provided we are doing similarity search first and then on that MMR, however if no filters are provided we are doing MMR directly skipping similarity search.
+* MMR algorithm (balance relevance + diversity).
+* To test the retrieval pipeline use belwo commands (For details please check scripts/retrieval/README.md for detailed testing of this pipeline)
+```bash
+# Simple test to verify everything works
+python scripts/retrieval/quick_test.py
+
+# Run all demos automatically
+python scripts/retrieval/demo_retrieval_pipeline.py
+
+# Interactive query testing
+python scripts/retrieval/demo_retrieval_pipeline.py --mode interactive
+
+```
