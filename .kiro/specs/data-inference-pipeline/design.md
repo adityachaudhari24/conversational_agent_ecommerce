@@ -130,13 +130,7 @@ class OpenAIProvider(BaseLLMProvider):
         """Initialize OpenAI client."""
         pass
 
-class GoogleProvider(BaseLLMProvider):
-    """Google Generative AI provider implementation."""
-    pass
-
-class GroqProvider(BaseLLMProvider):
-    """Groq LLM provider implementation."""
-    pass
+# Note: Google and Groq providers will be implemented in future iterations
 ```
 
 ### 2. Prompt Manager
@@ -605,12 +599,10 @@ from typing import Optional
 class InferenceSettings(BaseSettings):
     """Environment-based configuration for inference."""
     
-    # API Keys
+    # API Keys (OpenAI only for initial implementation)
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
-    google_api_key: Optional[str] = Field(default=None, env="GOOGLE_API_KEY")
-    groq_api_key: Optional[str] = Field(default=None, env="GROQ_API_KEY")
     
-    # LLM Provider Selection
+    # LLM Provider Selection (OpenAI only for now)
     llm_provider: str = Field(default="openai", env="LLM_PROVIDER")
     
     # Model Settings

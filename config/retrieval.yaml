@@ -1,43 +1,182 @@
+# ============================================================================
 # Retrieval Pipeline Configuration
-# Environment variables take precedence over these settings
+# ============================================================================
+# This configuration file defines settings for the Data Retrieval Pipeline.
+# Environment variables take precedence over these settings.
+#
+# Required Environment Variables:
+#   - OPENAI_API_KEY: OpenAI API key for embeddings
+#   - PINECONE_API_KEY: Pinecone API key for vector database
+#   - PINECONE_INDEX_NAME: Name of the Pinecone index (default: ecommerce-products)
+#   - PINECONE_NAMESPACE: Namespace within the index (default: phone-reviews)
+#   - PINECONE_ENVIRONMENT: Pinecone environment (default: us-east-1-aws)
+# ============================================================================
 
-cache:
-  enabled: true
-  max_size: 1000
-  ttl_seconds: 300
-compression:
-  enabled: true
-  relevance_prompt: null
-embedding:
-  dimension: 3072
-  model: text-embedding-3-large
-evaluation:
-  batch_size: 10
-  enabled: false
-  metrics:
-  - context_precision
-  - answer_relevancy
-formatter:
-  delimiter: "\n\n---\n\n"
-  include_scores: false
-  max_context_length: 4000
-  template: null
-logging:
-  level: INFO
-  structured: true
-query:
-  max_query_length: 512
-  normalize_unicode: true
-retry:
-  delay_seconds: 1.0
-  max_retries: 3
-rewriter:
-  max_rewrite_attempts: 2
-  rewrite_prompt: null
-  rewrite_threshold: 0.5
+# Vector Search Configuration
+# Controls how documents are retrieved from the vector database
 search:
-  fetch_k: 20
-  lambda_mult: 0.7
-  score_threshold: 0.6
-  search_type: mmr
+  # Number of documents to return (1-50)
   top_k: 4
+  
+  # Number of documents to fetch for MMR diversity (1-100)
+  # Should be >= top_k for MMR to work effectively
+  fetch_k: 20
+  
+  # MMR diversity parameter (0.0-1.0)
+  # 0.0 = maximum diversity, 1.0 = maximum relevance
+  lambda_mult: 0.7
+  
+  # Minimum similarity score threshold (0.0-1.0)
+  # Documents below this score are filtered out
+  score_threshold: 0.6
+  
+  # Search algorithm: "similarity" or "mmr"
+  # MMR provides diverse results, similarity focuses on relevance
+  search_type: mmr
+
+# Query Processing Configuration
+# Controls how user queries are processed before search
+query:
+  # Maximum query length in characters (1-2048)
+  # Longer queries are truncated with a warning
+  max_query_length: 512
+  
+  # Whether to normalize Unicode characters
+  # Recommended to keep true for consistent processing
+  normalize_unicode: true
+
+# Embedding Configuration
+# Settings for text embedding generation
+embedding:
+  # OpenAI embedding model to use
+  # Options: text-embedding-3-large, text-embedding-3-small, text-embedding-ada-002
+  model: text-embedding-3-large
+  
+  # Expected embedding dimension (must match model)
+  # text-embedding-3-large: 3072, text-embedding-3-small: 1536, ada-002: 1536
+  dimension: 3072
+
+# Contextual Compression Configuration
+# Controls LLM-based relevance filtering of retrieved documents
+compression:
+  # Whether to enable contextual compression
+  # Disabling improves speed but may reduce relevance
+  enabled: true
+  
+  # Custom prompt for relevance evaluation (null = use default)
+  # Should instruct the LLM to evaluate document relevance
+  relevance_prompt: null
+
+# Query Rewriting Configuration
+# Controls automatic query improvement for better results
+rewriter:
+  # Maximum number of query rewrite attempts (0-5)
+  # 0 disables query rewriting entirely
+  max_rewrite_attempts: 2
+  
+  # Relevance score threshold to trigger rewriting (0.0-1.0)
+  # Lower scores trigger rewriting more aggressively
+  rewrite_threshold: 0.5
+  
+  # Custom prompt for query rewriting (null = use default)
+  # Should instruct the LLM to improve query clarity
+  rewrite_prompt: null
+
+# Document Formatting Configuration
+# Controls how retrieved documents are formatted for output
+formatter:
+  # Custom format template (null = use default)
+  # Variables: {product_name}, {price}, {rating}, {review_text}
+  template: null
+  
+  # Delimiter between multiple documents
+  delimiter: "\n\n---\n\n"
+  
+  # Whether to include similarity scores in output
+  include_scores: false
+  
+  # Maximum total context length (100-10000)
+  # Longer contexts may be truncated
+  max_context_length: 4000
+
+# Result Caching Configuration
+# Controls caching of retrieval results for performance
+cache:
+  # Whether to enable result caching
+  # Improves performance for repeated queries
+  enabled: true
+  
+  # Cache entry time-to-live in seconds (0-3600)
+  # 0 disables TTL (cache never expires)
+  ttl_seconds: 300
+  
+  # Maximum number of cached entries (1-10000)
+  # Oldest entries are evicted when limit is reached
+  max_size: 1000
+
+# Retry Configuration
+# Controls retry behavior for transient failures
+retry:
+  # Maximum number of retry attempts (0-10)
+  # 0 disables retries entirely
+  max_retries: 3
+  
+  # Base delay between retries in seconds (0.1-10.0)
+  # Actual delay uses exponential backoff
+  delay_seconds: 1.0
+
+# Evaluation Configuration
+# Controls RAGAS-based quality evaluation of retrieval results
+evaluation:
+  # Whether to enable evaluation (impacts performance)
+  # Useful for monitoring and debugging
+  enabled: false
+  
+  # Evaluation metrics to compute
+  # Available: context_precision, answer_relevancy, faithfulness, answer_correctness
+  metrics:
+    - context_precision
+    - answer_relevancy
+  
+  # Batch size for evaluation processing (1-100)
+  # Larger batches are more efficient but use more memory
+  batch_size: 10
+
+# Logging Configuration
+# Controls logging behavior and output format
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: INFO
+  
+  # Whether to use structured logging (JSON format)
+  # Recommended for production environments
+  structured: true
+
+# ============================================================================
+# Performance Tuning Guidelines
+# ============================================================================
+# 
+# For High Accuracy:
+#   - Set score_threshold to 0.7 or higher
+#   - Enable compression
+#   - Use search_type: "mmr" with lambda_mult: 0.8
+#   - Enable evaluation for monitoring
+#
+# For High Speed:
+#   - Reduce top_k and fetch_k
+#   - Disable compression
+#   - Use search_type: "similarity"
+#   - Disable evaluation
+#   - Increase cache_ttl_seconds
+#
+# For High Diversity:
+#   - Use search_type: "mmr"
+#   - Set lambda_mult to 0.5 or lower
+#   - Increase fetch_k relative to top_k
+#
+# For Production:
+#   - Enable structured logging
+#   - Set appropriate retry limits
+#   - Monitor evaluation metrics
+#   - Use environment variables for sensitive data
+# ============================================================================

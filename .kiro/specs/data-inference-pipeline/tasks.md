@@ -20,6 +20,7 @@ This implementation plan breaks down the Data Inference Pipeline into discrete c
   - [ ] 1.3 Create configuration schema and loader
     - Create `src/pipelines/inference/config.py`
     - Implement InferenceSettings using Pydantic BaseSettings
+    - Integrate with existing config system in `src/utils/config.py`
     - Add YAML config loading support
     - _Requirements: 8.1, 8.2, 8.4, 8.5_
 
@@ -32,31 +33,22 @@ This implementation plan breaks down the Data Inference Pipeline into discrete c
     - Create `src/pipelines/inference/providers/base.py`
     - Implement BaseLLMProvider abstract class
     - Implement LLMConfig and LLMResponse dataclasses
-    - _Requirements: 1.5_
+    - _Requirements: 1.2_
 
   - [ ] 2.2 Implement OpenAI provider
     - Create `src/pipelines/inference/providers/openai_provider.py`
     - Implement invoke(), ainvoke(), astream() methods
-    - _Requirements: 1.1_
+    - Use tiktoken for token counting
+    - _Requirements: 1.1, 1.5_
 
-  - [ ] 2.3 Implement Google provider
-    - Create `src/pipelines/inference/providers/google_provider.py`
-    - Implement invoke(), ainvoke(), astream() methods
-    - _Requirements: 1.2_
-
-  - [ ] 2.4 Implement Groq provider
-    - Create `src/pipelines/inference/providers/groq_provider.py`
-    - Implement invoke(), ainvoke(), astream() methods
-    - _Requirements: 1.3_
-
-  - [ ] 2.5 Create LLM provider factory
+  - [ ] 2.3 Create LLM provider factory
     - Create `src/pipelines/inference/providers/factory.py`
-    - Implement LLMProviderFactory.create() method
+    - Implement LLMProviderFactory.create() method (OpenAI only)
     - _Requirements: 8.5_
 
-  - [ ]* 2.6 Write property test for retry logic with backoff
+  - [ ]* 2.4 Write property test for retry logic with backoff
     - **Property 2: Retry Logic with Exponential Backoff**
-    - **Validates: Requirements 1.6, 9.2**
+    - **Validates: Requirements 1.4, 9.2**
 
 - [ ] 3. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.

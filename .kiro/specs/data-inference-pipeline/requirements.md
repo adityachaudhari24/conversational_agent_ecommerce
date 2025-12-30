@@ -22,12 +22,11 @@ The Data Inference Pipeline is the response generation component of the Conversa
 
 #### Acceptance Criteria
 
-1. THE LLM_Provider SHALL support OpenAI models (GPT-4, GPT-4o)
-2. THE LLM_Provider SHALL support Google models (Gemini 2.0 Flash)
-3. THE LLM_Provider SHALL support Groq models (DeepSeek, Llama)
-4. WHEN an LLM API key is missing or invalid, THE LLM_Provider SHALL raise a ConfigurationError
-5. THE LLM_Provider SHALL support configurable parameters: temperature, max_tokens, model_name
-6. THE LLM_Provider SHALL implement retry logic for transient API failures
+1. THE LLM_Provider SHALL support OpenAI models (GPT-4, GPT-4o, GPT-3.5-turbo)
+2. THE LLM_Provider SHALL support configurable parameters: temperature, max_tokens, model_name
+3. WHEN an LLM API key is missing or invalid, THE LLM_Provider SHALL raise a ConfigurationError
+4. THE LLM_Provider SHALL implement retry logic for transient API failures
+5. THE LLM_Provider SHALL use tiktoken for accurate token counting
 
 ### Requirement 2: Prompt Management
 

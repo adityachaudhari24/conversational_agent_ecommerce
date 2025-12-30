@@ -150,15 +150,15 @@ This implementation plan breaks down the Data Retrieval Pipeline into discrete c
     - **Property 13: Evaluation Scores Inclusion**
     - **Validates: Requirements 10.5**
 
-- [ ] 12. Create Pydantic response models
-  - [ ] 12.1 Create response schemas
+- [-] 12. Create Pydantic response models
+  - [x] 12.1 Create response schemas
     - Create `src/pipelines/retrieval/models.py`
     - Implement DocumentScore, RetrievalMetadata, EvaluationScores, RetrievalResponse
     - Include enhanced EvaluationScores with evaluation_time_ms and error fields
     - _Requirements: 7.3_
 
-- [ ] 13. Create sample configuration files
-  - [ ] 13.1 Create YAML configuration template
+- [x] 13. Create sample configuration files
+  - [x] 13.1 Create YAML configuration template
     - Create `config/retrieval.yaml` with sample configuration
     - Document all configuration options with comments
     - _Requirements: 8.1, 8.4_
@@ -166,10 +166,10 @@ This implementation plan breaks down the Data Retrieval Pipeline into discrete c
 - [ ] 13. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 14. Checkpoint - Ensure all tests pass
+- [ ]* 14. Checkpoint - Ensure all tests pass
   - Ensure all tests pass, ask the user if questions arise.
 
-- [ ] 15. Create test fixtures and integration tests
+- [ ]* 15. Create test fixtures and integration tests
   - [ ] 15.1 Create test fixtures
     - Create `tests/fixtures/sample_queries.json` with test queries
     - Create `tests/fixtures/mock_documents.json` with mock search results

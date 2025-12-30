@@ -15,6 +15,13 @@ from .exceptions import (
     ConfigurationError,
 )
 from .cache import ResultCache, CacheConfig, CacheEntry
+from .models import (
+    DocumentScore,
+    RetrievalMetadata,
+    EvaluationScores,
+    RetrievalResponse,
+    create_error_response,
+)
 
 __all__ = [
     "RetrievalSettings",
@@ -28,4 +35,9 @@ __all__ = [
     "ResultCache",
     "CacheConfig",
     "CacheEntry",
+    "DocumentScore",
+    "RetrievalMetadata",
+    "EvaluationScores",
+    "RetrievalResponse",
+    "create_error_response",
 ]

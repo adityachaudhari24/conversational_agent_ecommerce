@@ -14,13 +14,18 @@ This script demonstrates the full capabilities of the retrieval pipeline includi
 Usage:
     python scripts/retrieval/demo_retrieval_pipeline.py
 """
-
+#TODO : redo it
 import os
 import sys
 import time
 import json
 from typing import Dict, Any, List
 from pathlib import Path
+
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Add src to path
 sys.path.append(str(Path(__file__).parent.parent.parent / "src"))

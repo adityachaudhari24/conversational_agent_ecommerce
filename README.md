@@ -58,9 +58,9 @@ tTests -v
 * To test the retrieval pipeline use belwo commands (For details please check scripts/retrieval/README.md for detailed testing of this pipeline)
 ```bash
 # Simple test to verify everything works
-python scripts/retrieval/quick_test.py
+python scripts/retrieval/simple_test.py
 
-# Run all demos automatically
+# Run detailed demo
 python scripts/retrieval/demo_retrieval_pipeline.py
 
 # Interactive query testing
