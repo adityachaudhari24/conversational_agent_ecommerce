@@ -544,11 +544,11 @@ class TestVectorSearcherIntegration:
         ]
         
         initialized_searcher.vector_store.max_marginal_relevance_search_by_vector.return_value = mock_docs
-        initialized_searcher.vector_store.similarity_search_with_score_by_vector.return_value = [
+        initialized_searcher.vector_store.similarity_search_by_vector_with_score.return_value = [
             (mock_docs[0], mock_scores[0]),
             (mock_docs[1], mock_scores[1])
         ]
-        
+
         # Perform search
         result = initialized_searcher.search(query_embedding, filters)
         
@@ -575,11 +575,11 @@ class TestVectorSearcherIntegration:
         mock_scores = [0.9, 0.8]
         
         # Mock the vector store method
-        initialized_searcher.vector_store.similarity_search_with_score_by_vector.return_value = [
+        initialized_searcher.vector_store.similarity_search_by_vector_with_score.return_value = [
             (mock_docs[0], mock_scores[0]),
             (mock_docs[1], mock_scores[1])
         ]
-        
+
         # Perform search
         result = initialized_searcher.search(query_embedding)
         

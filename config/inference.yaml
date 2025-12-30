@@ -1,0 +1,233 @@
+# ============================================================================
+# Inference Pipeline Configuration
+# ============================================================================
+# This configuration file defines settings for the Data Inference Pipeline.
+# Environment variables take precedence over these settings.
+#
+# Required Environment Variables:
+#   - OPENAI_API_KEY: OpenAI API key for LLM inference
+#
+# Optional Environment Variables:
+#   - INFERENCE_LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
+#   - INFERENCE_STRUCTURED_LOGGING: Enable structured JSON logging (true/false)
+# ============================================================================
+
+# LLM Client Configuration
+# Controls the Large Language Model provider and parameters
+llm:
+  # LLM provider (only "openai" supported in MVP)
+  provider: openai
+  
+  # OpenAI model to use for inference
+  # Options: gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo
+  model_name: gpt-4o-mini
+  
+  # Temperature for response generation (0.0-2.0)
+  # 0.0 = deterministic, 2.0 = very creative
+  temperature: 0.0
+  
+  # Maximum tokens in response (1-4096)
+  # Higher values allow longer responses but cost more
+  max_tokens: 2048
+  
+  # API key (loaded from environment variable OPENAI_API_KEY)
+  # Do not set this value directly in the config file
+  api_key: null
+
+# Conversation Management Configuration
+# Controls in-memory conversation history and session management
+conversation:
+  # Maximum number of messages to keep in history (1-100)
+  # Older messages are removed when limit is exceeded
+  max_history_length: 10
+  
+  # Session timeout in seconds (0 = no timeout)
+  # Sessions are automatically cleaned up after this period
+  session_timeout_seconds: 3600
+
+# Response Generator Configuration
+# Controls prompt construction and response generation
+generator:
+  # Custom system prompt (null = use default e-commerce prompt)
+  # Override to customize the assistant's behavior and personality
+  system_prompt: null
+  
+  # Maximum context tokens to include in prompts (100-8000)
+  # Longer contexts provide more information but may hit token limits
+  max_context_tokens: 3000
+  
+  # Whether to include conversation history in prompts
+  # Disabling improves speed but reduces conversational continuity
+  include_history: true
+
+# Agentic Workflow Configuration
+# Controls the LangGraph-based routing and tool execution
+workflow:
+  # Keywords that trigger retrieval from the vector database
+  # Queries containing these words will route to the retriever node
+  product_keywords:
+    - price
+    - review
+    - product
+    - recommend
+    - rating
+    - phone
+    - compare
+    - specification
+    - feature
+    - brand
+    - model
+  
+  # Keywords that trigger tool usage (product comparison demo)
+  # Queries containing these words will route to the tool node
+  tool_keywords:
+    - compare
+    - versus
+    - vs
+    - difference
+    - better
+  
+  # Router prompt template (null = use default)
+  # Custom prompt for query classification
+  router_prompt: null
+
+# Pipeline Configuration
+# Controls overall pipeline behavior and performance
+pipeline:
+  # Whether to enable streaming responses
+  # Streaming provides real-time feedback but may be less reliable
+  enable_streaming: true
+  
+  # Maximum number of retry attempts for failed operations (0-10)
+  # 0 disables retries entirely
+  max_retries: 3
+  
+  # Timeout for inference operations in seconds (1-300)
+  # Operations exceeding this time will be terminated
+  timeout_seconds: 30
+  
+  # Whether to validate configuration on startup
+  # Recommended to keep true for early error detection
+  validate_config: true
+
+# Retry Configuration
+# Controls retry behavior for transient failures
+retry:
+  # Base delay between retries in seconds (0.1-10.0)
+  # Actual delay uses exponential backoff: base_delay * (2 ^ attempt)
+  base_delay_seconds: 1.0
+  
+  # Maximum delay between retries in seconds (1-60)
+  # Prevents exponential backoff from becoming too long
+  max_delay_seconds: 30.0
+  
+  # Jitter factor for retry delays (0.0-1.0)
+  # Adds randomness to prevent thundering herd problems
+  jitter_factor: 0.1
+
+# Logging Configuration
+# Controls logging behavior and output format
+logging:
+  # Log level: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  # DEBUG provides detailed information, ERROR only shows errors
+  level: INFO
+  
+  # Whether to use structured logging (JSON format)
+  # Recommended for production environments and log aggregation
+  structured: true
+  
+  # Whether to log token usage for cost monitoring
+  # Useful for tracking API costs and usage patterns
+  log_token_usage: true
+  
+  # Whether to log latency metrics
+  # Useful for performance monitoring and optimization
+  log_latency: true
+
+# Integration Configuration
+# Controls integration with other pipeline components
+integration:
+  # Whether to use the retrieval pipeline for context
+  # Disabling will make the assistant respond without retrieved context
+  enable_retrieval: true
+  
+  # Retrieval pipeline configuration file path
+  # Path to the retrieval pipeline's YAML configuration
+  retrieval_config_path: config/retrieval.yaml
+  
+  # Whether to handle retrieval failures gracefully
+  # If true, continues without context; if false, raises error
+  graceful_retrieval_failure: true
+
+# Performance Tuning Configuration
+# Advanced settings for performance optimization
+performance:
+  # Whether to enable response caching
+  # Caches responses for identical queries to improve speed
+  enable_caching: false
+  
+  # Cache TTL in seconds (60-3600)
+  # How long to keep cached responses
+  cache_ttl_seconds: 300
+  
+  # Maximum cache size (10-10000)
+  # Number of responses to keep in cache
+  max_cache_size: 1000
+  
+  # Whether to preload models on startup
+  # Improves first-request latency but increases startup time
+  preload_models: false
+
+# Development Configuration
+# Settings useful during development and testing
+development:
+  # Whether to enable debug mode
+  # Provides additional logging and error information
+  debug_mode: false
+  
+  # Whether to mock LLM responses for testing
+  # Useful for testing without API costs
+  mock_llm_responses: false
+  
+  # Path to mock response file (when mock_llm_responses is true)
+  mock_responses_file: tests/fixtures/mock_llm_responses.json
+  
+  # Whether to validate all responses against schema
+  # Useful for catching response format issues during development
+  validate_responses: false
+
+# ============================================================================
+# Configuration Guidelines
+# ============================================================================
+#
+# For Development:
+#   - Set debug_mode: true
+#   - Use mock_llm_responses: true to avoid API costs
+#   - Set log level to DEBUG for detailed information
+#   - Disable caching for consistent testing
+#
+# For Production:
+#   - Enable structured logging
+#   - Set appropriate timeout and retry limits
+#   - Enable caching for better performance
+#   - Use environment variables for sensitive data
+#   - Monitor token usage and latency
+#
+# For High Performance:
+#   - Enable caching with appropriate TTL
+#   - Reduce max_context_tokens if not needed
+#   - Disable debug mode and verbose logging
+#   - Consider preloading models
+#
+# For High Accuracy:
+#   - Use gpt-4o instead of gpt-4o-mini
+#   - Increase max_context_tokens
+#   - Enable retrieval integration
+#   - Set temperature to 0.0 for deterministic responses
+#
+# For Cost Optimization:
+#   - Use gpt-4o-mini instead of gpt-4o
+#   - Reduce max_tokens and max_context_tokens
+#   - Enable caching to reduce API calls
+#   - Monitor and log token usage
+# ============================================================================

@@ -1,5 +1,4 @@
-# conversational_agent_ecommerce - a production grade demo application to demonstrate 3 key pipeline in conversational agent ** white paper
-Conversational Agent E-Commerce demo application 
+# conversational_agent_ecommerce - A Demo application to demonstrate 3 key pipeline in conversational agent 
 
 
 ### Environment preparation
@@ -49,6 +48,10 @@ tTests -v
  2. python -m pytest tests/unit/test_document_loader.py -v
  #run all tests 
  3. uv run pytest tests/unit/ -v
+
+# running single test example
+uv run pytest tests/unit/test_vector_searcher.py::TestVectorSearcherIntegration -v
+ 4. 
  ```
 
 ## Step 3 -  Data Retrieval pipeline
@@ -67,3 +70,8 @@ python scripts/retrieval/demo_retrieval_pipeline.py
 python scripts/retrieval/demo_retrieval_pipeline.py --mode interactive
 
 ```
+## Step 3 -  Data Inference pipeline
+* For detailed design for inference pipeline please check /kiro/specs/data-inference-pipeline/design.md.
+* we are using LangGraph for this pipeline, please check the design for details.
+* For testing the inference pipeline please check scripts/inference/README.md.
+* start interacting with "python scripts/inference/interactive.py"
