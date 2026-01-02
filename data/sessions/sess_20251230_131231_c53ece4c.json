@@ -1,0 +1,17 @@
+{
+  "session_id": "sess_20251230_131231_c53ece4c",
+  "created_at": "2025-12-30T13:12:31.999710Z",
+  "updated_at": "2025-12-30T13:12:48.561367Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "best gaming phone?",
+      "timestamp": "2025-12-30T13:12:39.723176Z"
+    },
+    {
+      "role": "assistant",
+      "content": "If you're looking for a great gaming phone, the Apple iPhone XS Max is a solid option. It has a powerful processor, a large 256GB storage capacity, and a fantastic camera, making it suitable for gaming as well as other tasks. It's currently priced at $284.99 and has a perfect rating of 5.0, with users praising its speed and performance.\n\nHowever, if you're looking for more recent models specifically designed for gaming, you might also consider options like the ASUS ROG Phone 5 or the Lenovo Legion Phone Duel, which are tailored for gaming with features like high refresh rate displays and advanced cooling systems. \n\nLet me know if you need more information or recommendations!",
+      "timestamp": "2025-12-30T13:12:48.561360Z"
+    }
+  ]
+}

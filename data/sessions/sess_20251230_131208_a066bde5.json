@@ -1,0 +1,17 @@
+{
+  "session_id": "sess_20251230_131208_a066bde5",
+  "created_at": "2025-12-30T13:12:08.784710Z",
+  "updated_at": "2025-12-30T13:12:27.401886Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "best camera phone?",
+      "timestamp": "2025-12-30T13:12:20.884998Z"
+    },
+    {
+      "role": "assistant",
+      "content": "If you're looking for a phone with an excellent camera, the **Apple iPhone X** is a fantastic option. It has a great camera and is highly rated with a score of **5.0**. It's known for its impressive photo quality, making it one of the best iterations of iPhones for photography. The price for the iPhone X (256GB, Silver, AT&T, Renewed) is **$264.00**.\n\nIf you're considering other options, the **Apple iPhone 6s Plus** also has a great camera and is rated **5.0**. While I don't have the price for it, users have praised its photo capabilities, especially for capturing important moments.\n\nLet me know if you need more information or other recommendations!",
+      "timestamp": "2025-12-30T13:12:27.401881Z"
+    }
+  ]
+}

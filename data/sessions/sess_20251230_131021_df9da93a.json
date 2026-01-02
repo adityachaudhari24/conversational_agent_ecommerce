@@ -1,0 +1,17 @@
+{
+  "session_id": "sess_20251230_131021_df9da93a",
+  "created_at": "2025-12-30T13:10:21.145724Z",
+  "updated_at": "2025-12-30T13:10:45.212075Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "iphone under $200",
+      "timestamp": "2025-12-30T13:10:33.069672Z"
+    },
+    {
+      "role": "assistant",
+      "content": "I currently have information on the Apple iPhone XR, which is priced at $226. While it's slightly above your budget, it has a 5.0 rating and is a strong phone for its time. \n\nIf you're looking for something more affordable, I don't have specific options under $200 at the moment. However, you might want to consider checking for refurbished or older models, as they can sometimes be found at lower prices. Would you like more information on the iPhone XR or any other specific models?",
+      "timestamp": "2025-12-30T13:10:45.212065Z"
+    }
+  ]
+}

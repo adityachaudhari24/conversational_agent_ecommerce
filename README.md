@@ -70,8 +70,21 @@ python scripts/retrieval/demo_retrieval_pipeline.py
 python scripts/retrieval/demo_retrieval_pipeline.py --mode interactive
 
 ```
-## Step 3 -  Data Inference pipeline
+## Step 4 -  Data Inference pipeline
 * For detailed design for inference pipeline please check /kiro/specs/data-inference-pipeline/design.md.
 * we are using LangGraph for this pipeline, please check the design for details.
 * For testing the inference pipeline please check scripts/inference/README.md.
 * start interacting with "python scripts/inference/interactive.py"
+
+
+## Step 5 -  Backend and Frontend
+
+```bash
+
+# Terminal 1 - Backend
+uv run uvicorn src.api.main:app --reload --port 8000
+
+# Terminal 2 - Frontend  
+uv run streamlit run src/frontend/app.py --server.port 8501
+
+```

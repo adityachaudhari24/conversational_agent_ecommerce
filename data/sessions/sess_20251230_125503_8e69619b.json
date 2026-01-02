@@ -1,0 +1,17 @@
+{
+  "session_id": "sess_20251230_125503_8e69619b",
+  "created_at": "2025-12-30T12:55:03.002244Z",
+  "updated_at": "2025-12-30T12:55:36.471355Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "best camera phone?",
+      "timestamp": "2025-12-30T12:55:29.042330Z"
+    },
+    {
+      "role": "assistant",
+      "content": "If you're looking for a phone with an excellent camera, the **Apple iPhone X** is a fantastic choice. It has a great camera and is highly rated with a score of **5.0**. It's known for its impressive photo quality, making it one of the best iterations of iPhones for photography. You can find it for **$264.00** as a renewed option.\n\nIf you're considering other options, the **Apple iPhone 6s Plus** also has a strong camera performance and is rated **5.0**. However, I don't have the price for that model. \n\nOverall, both of these iPhones are great for capturing high-quality photos!",
+      "timestamp": "2025-12-30T12:55:36.471343Z"
+    }
+  ]
+}

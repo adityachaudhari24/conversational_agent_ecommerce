@@ -1,0 +1,17 @@
+{
+  "session_id": "sess_20251230_124854_aa19f7c3",
+  "created_at": "2025-12-30T12:48:54.430013Z",
+  "updated_at": "2025-12-30T12:49:18.416302Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "iphone under 200",
+      "timestamp": "2025-12-30T12:49:03.254143Z"
+    },
+    {
+      "role": "assistant",
+      "content": "I currently don't have specific options for iPhones under $200 in the provided context. However, you might want to consider looking for older models or refurbished options, as they can often be found at lower prices. \n\nFor example, the Apple iPhone 11, 64GB, Green - Unlocked (Renewed) is priced at $302.25, which is above your budget, but it\u2019s a solid choice if you can stretch your budget a bit. It has a rating of 4.0 and comes in good condition with a battery life at 93%. \n\nIf you're looking for something more affordable, I recommend checking out local listings or online marketplaces for used or older models like the iPhone SE or iPhone 7, which might fit your budget better. Let me know if you need help with anything else!",
+      "timestamp": "2025-12-30T12:49:18.416292Z"
+    }
+  ]
+}

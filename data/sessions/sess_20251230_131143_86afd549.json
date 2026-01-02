@@ -1,0 +1,17 @@
+{
+  "session_id": "sess_20251230_131143_86afd549",
+  "created_at": "2025-12-30T13:11:43.865753Z",
+  "updated_at": "2025-12-30T13:12:00.503453Z",
+  "messages": [
+    {
+      "role": "user",
+      "content": "best camera phone",
+      "timestamp": "2025-12-30T13:11:51.455906Z"
+    },
+    {
+      "role": "assistant",
+      "content": "If you're looking for a phone with an excellent camera, the Apple iPhone X is a great option. It features a fantastic camera system and has received a perfect rating of 5.0 from users, with reviews highlighting its great camera quality. \n\nThe iPhone X is available for $264.0 and is a renewed model, which means you can get a high-quality device at a more affordable price. If you're interested in a reliable camera phone, this could be a solid choice! \n\nIf you have any specific requirements or preferences, let me know, and I can help you find more options!",
+      "timestamp": "2025-12-30T13:12:00.503442Z"
+    }
+  ]
+}
