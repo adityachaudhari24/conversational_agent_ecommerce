@@ -88,3 +88,56 @@ uv run uvicorn src.api.main:app --reload --port 8000
 uv run streamlit run src/frontend/app.py --server.port 8501
 
 ```
+
+
+
+### Architectural trade-off decisions
+<details>
+<summary>🎯Q. Which model is chosen as Embedding model and why? </summary>
+
+- We are using `text-embedding-3-large` model for embedding with 3072 dimensions. (Both ingestion and retrieval pipeline use this model)
+- more dimensions represent a higher "resolution" for capturing the meaning of your text
+- Excellent for product reviews and descriptions (As our data is phone reviews)
+- CONS - `text-embedding-3-large` does not support image embeddings. Our RAG is not optimized to embed images in reviews its only text based.
+</details>
+
+<details>
+<summary>🎯Q. What is your chunking strategy ? </summary>
+
+- I am using using `RecursiveCharacterTextSplitter` chunking strategy.
+- The recursive approach tries to split on natural boundaries (paragraphs, sentences, words) before falling back to character-level splitting.
+- I have also have 200-character overlap ensures important context isn't lost between chunks.
+</details>
+
+<details>
+<summary>🎯Q. Why you have chosen MMR search why not similarity search ? </summary>
+
+- MMR prevents redundant results. Pure similarity search might return 5 documents all describing identical results because they're all highly similar to the query. MMR selects documents that are both relevant to the query AND different from each other, giving users a diverse set of results. This is especially valuable in our reviews use case where we want to  to find variety in reviews, not repetitions.
+</details>
+
+<details>
+<summary>🎯Q. Why re-ranking is not used? </summary>
+
+- The pipeline uses MMR (Maximal Marginal Relevance) and LLM-based contextual compression instead of reranking.
+- Design Choice: The system prioritizes diversity (MMR) and relevance filtering (LLM compression) over score-based reranking
+- we choose the LLM based reranker because
+  - Quality over Speed: LLM provides better semantic understanding
+  - Noise Reduction: Completely removes irrelevant documents rather than just reordering
+  - Better customization control: Can adjust the relevance prompt for different use cases
+  - E-commerce Focus: Better for product queries where relevance is more important than     
+    ranking nuances.
+
+- _execute_retrieval_workflow()_ function in src/pipelines/retrieval.py uses MMR and then LLM-based contextual compression to filter and rank the retrieved documents.
+- CONS : this reranking approach(LLM based) is not cost optimized also has a bit more latency.
+</details>
+
+<details>
+<summary>🎯Q. Are you doing validations before retrieval? </summary>
+
+- yes we are doing validations before retrieval, meaning before passing request to vector DB.
+ - 1. _validate(query)     - Validates query is not empty/whitespace
+ - 2. _normalize(query)    - Normalizes whitespace and unicode
+ - 3. _truncate(query)     - Truncates if too long
+ - 4. _embed(query)        - Generates embedding
+
+</details>
