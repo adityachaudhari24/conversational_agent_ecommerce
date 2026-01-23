@@ -50,8 +50,8 @@ tTests -v
  3. uv run pytest tests/unit/ -v
 
 # running single test example
-uv run pytest tests/unit/test_vector_searcher.py::TestVectorSearcherIntegration -v
- 4. 
+4. uv run pytest tests/unit/test_vector_searcher.py::TestVectorSearcherIntegration -v
+ 
  ```
 
 ## Step 3 -  Data Retrieval pipeline
@@ -72,7 +72,7 @@ python scripts/retrieval/demo_retrieval_pipeline.py --mode interactive
 ```
 ## Step 4 -  Data Inference pipeline
 * For detailed design for inference pipeline please check /kiro/specs/data-inference-pipeline/design.md.
-* we are using LangGraph for this pipeline, please check the design for details.
+* I am using LangGraph for this pipeline, please check the design for details.
 * For testing the inference pipeline please check scripts/inference/README.md.
 * start interacting with "python scripts/inference/interactive.py"
 
@@ -91,7 +91,7 @@ uv run streamlit run src/frontend/app.py --server.port 8501
 
 
 
-### Architectural trade-off decisions
+## Architectural trade-off decisions
 <details>
 <summary>🎯Q. Which model is chosen as Embedding model and why? </summary>
 
