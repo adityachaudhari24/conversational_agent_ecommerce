@@ -1,5 +1,7 @@
 # conversational_agent_ecommerce - A Demo application to demonstrate 3 key pipeline in conversational agent 
 
+## This demo project is to companion to this published article : https://www.linkedin.com/newsletters/7414417371697684480/
+
 
 ### Environment preparation
 ```bash
@@ -14,7 +16,7 @@ source .venv/bin/activate
 ## Step 1 - Data Preparation and Feature Engineering
 
  Data is loaded from huge huggingface dataset here https://huggingface.co/datasets/McAuley-Lab/Amazon-Reviews-2023/tree/main/raw/review_categories
- For experiment only iphone data is extracted, all data loading from huggingface and data extraction steps are in the notebook "ecommerce_data.ipynb" in the codebase.
+ For experiment only iphone data is filtered, all data loading from huggingface and then keeping that data into csv is code is under the notebook "ecommerce_data.ipynb" in the codebase.
 
 
  ## Step 2 -  Data Ingestion pipeline
@@ -27,18 +29,8 @@ source .venv/bin/activate
 # below is for dry run
 python -m src.pipelines.ingestion --dry-run
 
-# below will actually create the embeddings in the pinecone
+# below will actually create the embeddings in the pinecone 
 python -m src.pipelines.ingestion
-
-
-# With custom data file and verbose logging
-python -m src.pipelines.ingestion --data-file data/phones_reviews.csv --log-level DEBUG
-
-# With custom configuration file
-python -m src.pipelines.ingestion --config config/ingestion.yaml
-
-# With custom parameters
-python -m src.pipelines.ingestion --batch-size 50 --abort-threshold 0.3
 ```
 
  #### running tests for Data Ingestion Pipeline commands
