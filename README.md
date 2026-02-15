@@ -1,6 +1,6 @@
 # conversational_agent_ecommerce - A Demo application to demonstrate 3 key pipeline in conversational agent 
 
-## This demo project is to companion to this published article : https://www.linkedin.com/newsletters/7414417371697684480/
+## This demo project is to companion to this published article : https://www.linkedin.com/pulse/conversational-agent-e-commerce-retail-challenges-aditya-chaudhari-wdo6e/?trackingId=a5IXNxj3Snqi6rp9qu3b7Q%3D%3D
 
 
 ### Environment preparation
@@ -131,5 +131,59 @@ uv run streamlit run src/frontend/app.py --server.port 8501
  - 2. _normalize(query)    - Normalizes whitespace and unicode
  - 3. _truncate(query)     - Truncates if too long
  - 4. _embed(query)        - Generates embedding
+
+</details>
+
+
+## Brainstorming
+ <details>
+<summary>🎯Q. what are different techniques to fetch data from vector DB? </summary>
+
+```
+Vector Search Techniques Overview
+Here are the main techniques for fetching data from vector databases:
+
+1. Similarity Search (Cosine/Euclidean)
+How it works: Returns top-k documents with highest similarity scores
+Pros: Simple, fast, purely relevance-based
+Cons: Can return redundant/similar documents
+Use case: When you want the most relevant results regardless of diversity
+2. MMR (Maximal Marginal Relevance) ⭐ Your current choice
+How it works: Balances relevance with diversity by penalizing similar documents
+Formula: MMR = λ × Relevance - (1-λ) × MaxSimilarity
+Pros: Reduces redundancy, provides diverse perspectives
+Cons: Slightly slower, may miss highly relevant duplicates
+Use case: E-commerce where you want variety in product recommendations
+3. Hybrid Search (Dense + Sparse)
+How it works: Combines vector similarity with keyword/BM25 search
+Pros: Best of both worlds - semantic + exact matching
+Cons: More complex, requires both vector and keyword indices
+Use case: When users mix semantic queries with specific product names/SKUs
+4. Filtered Vector Search
+How it works: Pre-filters by metadata before similarity search
+Pros: Efficient for constrained searches (price range, category)
+Cons: May reduce result quality if filters are too restrictive
+Use case: "Show me phones under $500 with 4+ stars" ⭐ You're using this too
+5. Reranking
+How it works: Initial retrieval → LLM/cross-encoder reranks results
+Pros: Highest quality relevance, context-aware
+Cons: Slower, requires additional LLM calls
+Use case: When quality matters more than speed
+6. Multi-Query Retrieval
+How it works: Generates multiple query variations, retrieves for each, merges results
+Pros: Handles ambiguous queries better
+Cons: Multiple API calls, higher latency
+Use case: Complex or vague user queries
+7. Parent Document Retrieval
+How it works: Retrieves small chunks, returns full parent documents
+Pros: Better context, avoids truncated information
+Cons: Requires document hierarchy management
+Use case: Long product descriptions split into chunks
+8. Self-Query Retrieval
+How it works: LLM extracts filters from natural language query
+Pros: Natural language → structured filters automatically
+Cons: Requires LLM call before search
+Use case: "Show me cheap Samsung phones with good reviews"
+```
 
 </details>
