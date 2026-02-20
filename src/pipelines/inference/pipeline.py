@@ -32,6 +32,7 @@ from .exceptions import (
 from .llm.client import LLMClient
 from .conversation.manager import ConversationManager, Message
 from .generation.generator import ResponseGenerator
+from .grounding import GroundingConfig
 from .workflow.agentic import AgenticWorkflow
 
 
@@ -155,10 +156,19 @@ class InferencePipeline:
             # Initialize conversation manager
             self.conversation_manager = ConversationManager(self.config.conversation_config)
             
-            # Initialize response generator
+            # Create grounding configuration from generator config
+            grounding_config = GroundingConfig(
+                strict_mode=self.config.generator_config.strict_grounding,
+                require_context=self.config.generator_config.require_context,
+                min_context_length=self.config.generator_config.min_context_length,
+                enable_validation=True
+            )
+            
+            # Initialize response generator with grounding
             self.response_generator = ResponseGenerator(
                 self.config.generator_config,
-                self.llm_client
+                self.llm_client,
+                grounding_config
             )
             
             # Initialize agentic workflow

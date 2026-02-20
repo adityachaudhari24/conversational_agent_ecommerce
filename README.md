@@ -74,7 +74,7 @@ python scripts/retrieval/demo_retrieval_pipeline.py --mode interactive
 ```bash
 
 # Terminal 1 - Backend
-uv run uvicorn src.api.main:app --reload --port 8000
+uv run uvicorn src.api.main:app --reload --port 8009
 
 # Terminal 2 - Frontend  
 uv run streamlit run src/frontend/app.py --server.port 8501

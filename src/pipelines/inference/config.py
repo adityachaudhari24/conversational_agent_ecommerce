@@ -72,6 +72,9 @@ class GeneratorConfig(BaseSettings):
     Attributes:
         system_prompt: Custom system prompt (uses default if None)
         max_context_tokens: Maximum tokens for context injection
+        strict_grounding: Enable strict grounding mode (prevents hallucination)
+        require_context: Require context for product recommendations
+        min_context_length: Minimum context length to proceed with generation
     """
     
     model_config = SettingsConfigDict(
@@ -87,6 +90,19 @@ class GeneratorConfig(BaseSettings):
         default=3000,
         gt=0,
         description="Maximum context tokens"
+    )
+    strict_grounding: bool = Field(
+        default=True,
+        description="Enable strict grounding to prevent hallucination"
+    )
+    require_context: bool = Field(
+        default=True,
+        description="Require context for product-related responses"
+    )
+    min_context_length: int = Field(
+        default=50,
+        gt=0,
+        description="Minimum context length required"
     )
 
 

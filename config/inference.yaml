@@ -59,6 +59,24 @@ generator:
   # Whether to include conversation history in prompts
   # Disabling improves speed but reduces conversational continuity
   include_history: true
+  
+  # ===== GROUNDING CONFIGURATION =====
+  # These settings prevent LLM hallucination and ensure responses are grounded in RAG context
+  
+  # Enable strict grounding mode (RECOMMENDED: true)
+  # When true, LLM is explicitly instructed to ONLY use information from retrieved context
+  # When false, LLM can use general knowledge alongside context
+  strict_grounding: true
+  
+  # Require context for product recommendations (RECOMMENDED: true)
+  # When true, refuses to recommend products without retrieved context
+  # When false, may provide general responses without specific product data
+  require_context: true
+  
+  # Minimum context length required (characters)
+  # If retrieved context is shorter than this, returns fallback message
+  # Set to 0 to disable length check
+  min_context_length: 50
 
 # Agentic Workflow Configuration
 # Controls the LangGraph-based routing and tool execution

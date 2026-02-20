@@ -7,7 +7,7 @@ class FrontendSettings(BaseSettings):
     """Configuration for the Streamlit frontend."""
     
     # API settings
-    api_base_url: str = "http://localhost:8000"
+    api_base_url: str = "http://localhost:8009"
     
     # Chat UI settings
     chat_width: int = 400

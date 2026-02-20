@@ -9,6 +9,7 @@ from typing import AsyncIterator, List, Optional
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 
 from ..config import GeneratorConfig
+from ..grounding import GroundingConfig, GroundingStrategy
 from ..llm.client import LLMClient
 
 
@@ -38,15 +39,22 @@ Instructions:
 When context is provided, use it to inform your responses. When no context is available, 
 respond based on the conversation history and your general knowledge."""
     
-    def __init__(self, config: GeneratorConfig, llm_client: LLMClient):
+    def __init__(
+        self,
+        config: GeneratorConfig,
+        llm_client: LLMClient,
+        grounding_config: Optional[GroundingConfig] = None
+    ):
         """Initialize the response generator.
         
         Args:
             config: Generator configuration
             llm_client: Initialized LLM client for API calls
+            grounding_config: Optional grounding configuration for strict RAG
         """
         self.config = config
         self.llm_client = llm_client
+        self.grounding_config = grounding_config or GroundingConfig(strict_mode=True)
     
     def generate(
         self,
@@ -67,8 +75,28 @@ respond based on the conversation history and your general knowledge."""
         Raises:
             LLMError: If LLM API call fails
         """
+        # Check context quality if grounding is enabled
+        if self.grounding_config.require_context:
+            is_sufficient, msg = GroundingStrategy.create_retrieval_quality_check(
+                context, self.grounding_config.min_context_length
+            )
+            if not is_sufficient:
+                # Return fallback message instead of generating
+                return self.grounding_config.fallback_message
+        
         messages = self._build_messages(query, context, history)
         response = self.llm_client.invoke(messages)
+        
+        # Validate response grounding if enabled
+        if self.grounding_config.enable_validation:
+            is_valid, warning = GroundingStrategy.validate_response_grounding(
+                response.content, context, self.grounding_config.strict_mode
+            )
+            if not is_valid:
+                # Log warning or return fallback
+                # For now, return fallback message
+                return self.grounding_config.fallback_message
+        
         return response.content
     
     async def agenerate(
@@ -90,8 +118,25 @@ respond based on the conversation history and your general knowledge."""
         Raises:
             LLMError: If LLM API call fails
         """
+        # Check context quality if grounding is enabled
+        if self.grounding_config.require_context:
+            is_sufficient, msg = GroundingStrategy.create_retrieval_quality_check(
+                context, self.grounding_config.min_context_length
+            )
+            if not is_sufficient:
+                return self.grounding_config.fallback_message
+        
         messages = self._build_messages(query, context, history)
         response = await self.llm_client.ainvoke(messages)
+        
+        # Validate response grounding if enabled
+        if self.grounding_config.enable_validation:
+            is_valid, warning = GroundingStrategy.validate_response_grounding(
+                response.content, context, self.grounding_config.strict_mode
+            )
+            if not is_valid:
+                return self.grounding_config.fallback_message
+        
         return response.content
     
     async def astream(
@@ -140,8 +185,8 @@ respond based on the conversation history and your general knowledge."""
         """
         messages: List[BaseMessage] = []
         
-        # 1. Build system prompt
-        system_prompt = self._build_system_prompt(context)
+        # 1. Build system prompt with query for grounding
+        system_prompt = self._build_system_prompt(context, query)
         messages.append(SystemMessage(content=system_prompt))
         
         # 2. Add conversation history (if provided)
@@ -159,15 +204,26 @@ respond based on the conversation history and your general knowledge."""
         
         return messages
     
-    def _build_system_prompt(self, context: Optional[str]) -> str:
+    def _build_system_prompt(self, context: Optional[str], query: str = "") -> str:
         """Build the system prompt with optional context injection.
         
         Args:
             context: Optional retrieved context to inject
+            query: User query (needed for grounding strategies)
             
         Returns:
             Complete system prompt string
         """
+        # Use grounding strategy if configured
+        if self.grounding_config and self.grounding_config.strict_mode:
+            # Use strict grounding prompt
+            system_prompt = GroundingStrategy.build_grounded_system_prompt(
+                context=context,
+                query=query,
+                strict_mode=True
+            )
+            return system_prompt
+        
         # Use custom prompt if configured, otherwise use default
         base_prompt = (
             self.config.system_prompt 

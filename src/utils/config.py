@@ -48,7 +48,7 @@ class APISettings(BaseSettings):
     """API server configuration settings."""
     
     host: str = Field(default="0.0.0.0", description="API host")
-    port: int = Field(default=8000, description="API port")
+    port: int = Field(default=8009, description="API port")
     debug: bool = Field(default=False, description="Debug mode")
     reload: bool = Field(default=False, description="Auto-reload on changes")
     workers: int = Field(default=1, description="Number of worker processes")
@@ -64,7 +64,7 @@ class StreamlitSettings(BaseSettings):
     host: str = Field(default="0.0.0.0", description="Streamlit host")
     port: int = Field(default=8501, description="Streamlit port")
     api_base_url: str = Field(
-        default="http://localhost:8000",
+        default="http://localhost:8009",
         description="FastAPI backend URL"
     )
 

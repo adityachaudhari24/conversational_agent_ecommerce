@@ -9,7 +9,7 @@ class APISettings(BaseSettings):
     
     # Server settings
     host: str = "0.0.0.0"
-    port: int = 8000
+    port: int = 8009
     debug: bool = False
     
     # CORS settings
