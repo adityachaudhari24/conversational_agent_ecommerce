@@ -368,20 +368,16 @@ class TestVectorSearcher:
         assert result == expected
     
     def test_build_filter_dict_product_name(self, vector_searcher):
-        """Test building filter dict with product name pattern."""
+        """Test that product_name_pattern is excluded from Pinecone filters (handled post-search)."""
         filters = MetadataFilter(product_name_pattern="phone")
         result = vector_searcher._build_filter_dict(filters)
         
-        expected = {
-            "product_name": {
-                "$regex": ".*phone.*",
-                "$options": "i"
-            }
-        }
-        assert result == expected
+        # product_name_pattern should NOT be in the Pinecone filter dict
+        # It's applied post-search via _apply_product_name_filter()
+        assert result == {}
     
     def test_build_filter_dict_all_filters(self, vector_searcher):
-        """Test building filter dict with all filters."""
+        """Test building filter dict with all filters (product name excluded from Pinecone filters)."""
         filters = MetadataFilter(
             min_price=10.0,
             max_price=100.0,
@@ -393,7 +389,6 @@ class TestVectorSearcher:
         expected = {
             "price": {"$gte": 10.0, "$lte": 100.0},
             "rating": {"$gte": 4.0},
-            "product_name": {"$regex": ".*phone.*", "$options": "i"}
         }
         assert result == expected
     
@@ -462,6 +457,51 @@ class TestVectorSearcher:
         assert len(filtered_scores) == 2
         assert filtered_scores == [0.8, 0.7]
     
+    def test_apply_product_name_filter_matches(self, vector_searcher):
+        """Test post-search product name filtering with substring matching."""
+        documents = [
+            Document(page_content="review1", metadata={"product_name": "Apple iPhone 12, 128GB, Green"}),
+            Document(page_content="review2", metadata={"product_name": "Samsung Galaxy S21"}),
+            Document(page_content="review3", metadata={"product_name": "Apple iPhone 12 Pro Max"}),
+        ]
+        scores = [0.9, 0.85, 0.8]
+        
+        filtered_docs, filtered_scores = vector_searcher._apply_product_name_filter(
+            documents, scores, "iphone 12"
+        )
+        
+        assert len(filtered_docs) == 2
+        assert filtered_docs[0].metadata["product_name"] == "Apple iPhone 12, 128GB, Green"
+        assert filtered_docs[1].metadata["product_name"] == "Apple iPhone 12 Pro Max"
+        assert filtered_scores == [0.9, 0.8]
+    
+    def test_apply_product_name_filter_no_match(self, vector_searcher):
+        """Test post-search product name filtering when nothing matches."""
+        documents = [
+            Document(page_content="review1", metadata={"product_name": "Samsung Galaxy S21"}),
+        ]
+        scores = [0.9]
+        
+        filtered_docs, filtered_scores = vector_searcher._apply_product_name_filter(
+            documents, scores, "iphone 12"
+        )
+        
+        assert len(filtered_docs) == 0
+        assert len(filtered_scores) == 0
+    
+    def test_apply_product_name_filter_empty_pattern(self, vector_searcher):
+        """Test post-search product name filtering with empty pattern returns all docs."""
+        documents = [
+            Document(page_content="review1", metadata={"product_name": "Apple iPhone 12"}),
+        ]
+        scores = [0.9]
+        
+        filtered_docs, filtered_scores = vector_searcher._apply_product_name_filter(
+            documents, scores, ""
+        )
+        
+        assert len(filtered_docs) == 1
+
     @patch('src.pipelines.retrieval.search.vector_searcher.Pinecone')
     def test_get_index_stats_not_initialized(self, mock_pinecone_class, vector_searcher):
         """Test get_index_stats fails when not initialized."""

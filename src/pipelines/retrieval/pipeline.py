@@ -25,6 +25,7 @@ from .processors.context_compressor import ContextCompressor, CompressorConfig, 
 from .processors.query_rewriter import QueryRewriter, RewriterConfig, RewriteResult
 from .processors.document_formatter import DocumentFormatter, FormatterConfig, FormattedContext
 from .cache.result_cache import ResultCache, CacheConfig
+from .processors.metadata_extractor import MetadataExtractor, ExtractorConfig
 
 
 @dataclass
@@ -37,6 +38,7 @@ class RetrievalConfig:
     rewriter_config: RewriterConfig
     formatter_config: FormatterConfig
     cache_config: CacheConfig
+    extractor_config: ExtractorConfig
     max_retries: int = 3
     retry_delay_seconds: float = 1.0
     enable_evaluation: bool = False
@@ -98,6 +100,7 @@ class RetrievalPipeline(RetrievalLoggerMixin):
         self.query_rewriter: Optional[QueryRewriter] = None
         self.document_formatter: Optional[DocumentFormatter] = None
         self.cache: Optional[ResultCache] = None
+        self.metadata_extractor: Optional[MetadataExtractor] = None
         self.evaluator = None  # Will be implemented when RAGAS evaluation is added
         
         # Metrics logger
@@ -178,6 +181,12 @@ class RetrievalPipeline(RetrievalLoggerMixin):
             max_size=settings.cache_max_size
         )
         
+        extractor_config = ExtractorConfig(
+            enabled=settings.metadata_extraction_enabled,
+            llm_model=settings.metadata_extraction_model,
+            timeout_seconds=settings.metadata_extraction_timeout
+        )
+        
         # Create main pipeline configuration
         pipeline_config = RetrievalConfig(
             query_config=query_config,
@@ -186,6 +195,7 @@ class RetrievalPipeline(RetrievalLoggerMixin):
             rewriter_config=rewriter_config,
             formatter_config=formatter_config,
             cache_config=cache_config,
+            extractor_config=extractor_config,
             max_retries=settings.max_retries,
             retry_delay_seconds=settings.retry_delay_seconds,
             enable_evaluation=settings.enable_evaluation
@@ -235,6 +245,14 @@ class RetrievalPipeline(RetrievalLoggerMixin):
                 self.settings.openai_api_key
             )
             
+            # Initialize metadata extractor
+            if self.config.extractor_config.enabled:
+                self.logger.info("Initializing MetadataExtractor...")
+                self.metadata_extractor = MetadataExtractor(
+                    self.config.extractor_config,
+                    self.settings.openai_api_key
+                )
+            
             # Initialize vector searcher
             self.logger.info("Initializing VectorSearcher...")
             self.vector_searcher = VectorSearcher(
@@ -272,18 +290,25 @@ class RetrievalPipeline(RetrievalLoggerMixin):
             
             self._initialized = True
             
+            # Build components list dynamically based on what was initialized
+            components_initialized = [
+                'QueryProcessor',
+                'VectorSearcher', 
+                'ContextCompressor',
+                'QueryRewriter',
+                'DocumentFormatter',
+                'ResultCache'
+            ]
+            
+            # Add MetadataExtractor if it was initialized
+            if self.metadata_extractor is not None:
+                components_initialized.insert(1, 'MetadataExtractor')
+            
             self.logger.info(
                 "RetrievalPipeline initialization completed successfully",
                 extra={
                     'extra_fields': {
-                        'components_initialized': [
-                            'QueryProcessor',
-                            'VectorSearcher', 
-                            'ContextCompressor',
-                            'QueryRewriter',
-                            'DocumentFormatter',
-                            'ResultCache'
-                        ],
+                        'components_initialized': components_initialized,
                         'evaluation_enabled': self.config.enable_evaluation
                     }
                 }
@@ -470,6 +495,44 @@ class RetrievalPipeline(RetrievalLoggerMixin):
                     'time_ms': step_time,
                     'query_truncated': processed_query.truncated
                 })
+                
+                # Step 1.5: Extract metadata filters (if not provided)
+                if filters is None and self.metadata_extractor is not None:
+                    step_start = time.time()
+                    try:
+                        extracted_filters = self.metadata_extractor.extract(current_query)
+                        step_time = (time.time() - step_start) * 1000
+                        
+                        if extracted_filters is not None:
+                            filters = extracted_filters
+                            metadata['auto_extracted_filters'] = True
+                            self.logger.info(
+                                f"Auto-extracted filters: {filters.__dict__}",
+                                extra={'extra_fields': filters.__dict__}
+                            )
+                        
+                        metadata['workflow_steps'].append({
+                            'step': 'metadata_extraction',
+                            'iteration': iteration,
+                            'time_ms': step_time,
+                            'filters_extracted': extracted_filters is not None,
+                            'product_name': filters.product_name_pattern if filters else None,
+                            'min_price': filters.min_price if filters else None,
+                            'max_price': filters.max_price if filters else None,
+                            'min_rating': filters.min_rating if filters else None
+                        })
+                        
+                    except Exception as e:
+                        step_time = (time.time() - step_start) * 1000
+                        self.logger.warning(f"Metadata extraction failed: {e}")
+                        # Continue without filters (graceful degradation)
+                        metadata['workflow_steps'].append({
+                            'step': 'metadata_extraction',
+                            'iteration': iteration,
+                            'time_ms': step_time,
+                            'filters_extracted': False,
+                            'error': str(e)
+                        })
                 
                 # Step 2: Vector search
                 step_start = time.time()

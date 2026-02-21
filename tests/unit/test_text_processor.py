@@ -38,11 +38,11 @@ class TestTextProcessor:
         # Verify results
         assert len(documents) == 2
         assert isinstance(documents[0], Document)
-        assert documents[0].page_content == 'Love this phone!'
+        assert documents[0].page_content == 'Product: iPhone 14 | Price: $999.99 | Rating: 4.5/5 | Review: Love this phone!'
         assert documents[0].metadata['product_name'] == 'iPhone 14'
         assert documents[0].metadata['price'] == '999.99'
         
-        assert documents[1].page_content == 'Works well for the price'
+        assert documents[1].page_content == 'Product: Samsung Galaxy | Price: $799.99 | Rating: 4.2/5 | Review: Works well for the price'
         assert documents[1].metadata['product_name'] == 'Samsung Galaxy'
     
     def test_sanitize_nan_values(self):
@@ -94,7 +94,7 @@ class TestTextProcessor:
         
         # Verify only valid content is processed
         assert len(documents) == 1
-        assert documents[0].page_content == 'Love this phone!'
+        assert 'Review: Love this phone!' in documents[0].page_content
         
         # Check validation report
         report = processor.get_validation_report()
@@ -153,7 +153,7 @@ class TestTextProcessor:
         
         # Verify custom configuration is used
         assert len(documents) == 1
-        assert documents[0].page_content == 'This is the main content'
+        assert 'Review: This is the main content' in documents[0].page_content
         assert documents[0].metadata['title'] == 'Product A'
         assert documents[0].metadata['category'] == 'Electronics'
         assert documents[0].metadata['custom_field'] == 'Custom value'

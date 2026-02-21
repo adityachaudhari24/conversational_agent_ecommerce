@@ -295,7 +295,18 @@ class VectorSearcher(RetrievalLoggerMixin):
         
         try:
             # Build filter dictionary if filters are provided
+            # Note: product_name_pattern is excluded from Pinecone filters
+            # and applied post-search via _apply_product_name_filter()
             filter_dict = self._build_filter_dict(filters) if filters else None
+            
+            # If we have a product name pattern, fetch more results to compensate
+            # for post-search filtering that will reduce the result set
+            product_name_pattern = filters.product_name_pattern if filters else None
+            effective_top_k = self.config.top_k
+            effective_fetch_k = self.config.fetch_k
+            if product_name_pattern:
+                effective_top_k = self.config.top_k * 5
+                effective_fetch_k = self.config.fetch_k * 3
             
             # Perform search based on type
             if self.config.search_type == "mmr":
@@ -305,20 +316,20 @@ class VectorSearcher(RetrievalLoggerMixin):
                     # Use similarity_search_by_vector_with_score directly for filtering support
                     docs_and_scores = self.vector_store.similarity_search_by_vector_with_score(
                         embedding=query_embedding,
-                        k=self.config.fetch_k,
+                        k=effective_fetch_k,
                         filter=filter_dict
                     )
                     
                     # Apply MMR to the fetched results
-                    if len(docs_and_scores) > self.config.top_k:
+                    if len(docs_and_scores) > effective_top_k:
                         # Extract documents and embeddings for MMR
                         docs = [doc for doc, _ in docs_and_scores]
                         
                         # Use vector store's MMR functionality
                         mmr_docs = self.vector_store.max_marginal_relevance_search_by_vector(
                             embedding=query_embedding,
-                            k=self.config.top_k,
-                            fetch_k=min(len(docs), self.config.fetch_k),
+                            k=effective_top_k,
+                            fetch_k=min(len(docs), effective_fetch_k),
                             lambda_mult=self.config.lambda_mult,
                             filter=filter_dict
                         )
@@ -343,8 +354,8 @@ class VectorSearcher(RetrievalLoggerMixin):
                     # Use MMR search without filters
                     documents = self.vector_store.max_marginal_relevance_search_by_vector(
                         embedding=query_embedding,
-                        k=self.config.top_k,
-                        fetch_k=self.config.fetch_k,
+                        k=effective_top_k,
+                        fetch_k=effective_fetch_k,
                         lambda_mult=self.config.lambda_mult
                     )
                     
@@ -369,7 +380,7 @@ class VectorSearcher(RetrievalLoggerMixin):
             else:  # similarity search
                 docs_and_scores = self.vector_store.similarity_search_by_vector_with_score(
                     embedding=query_embedding,
-                    k=self.config.top_k,
+                    k=effective_top_k,
                     filter=filter_dict
                 )
                 
@@ -379,13 +390,25 @@ class VectorSearcher(RetrievalLoggerMixin):
             # Apply score threshold filtering
             filtered_documents, filtered_scores = self._apply_score_threshold(documents, scores)
             
+            # Apply product name filter post-search (Pinecone doesn't support substring matching)
+            if product_name_pattern:
+                filtered_documents, filtered_scores = self._apply_product_name_filter(
+                    filtered_documents, filtered_scores, product_name_pattern
+                )
+            
+            # Trim back to original top_k after post-filtering
+            if len(filtered_documents) > self.config.top_k:
+                filtered_documents = filtered_documents[:self.config.top_k]
+                filtered_scores = filtered_scores[:self.config.top_k]
+            
             # Prepare search metadata
             search_metadata = {
                 "search_type": self.config.search_type,
                 "original_count": len(documents),
                 "filtered_count": len(filtered_documents),
                 "score_threshold": self.config.score_threshold,
-                "filters_applied": bool(filter_dict)
+                "filters_applied": bool(filter_dict),
+                "product_name_filter": product_name_pattern
             }
             
             if self.config.search_type == "mmr":
@@ -437,6 +460,10 @@ class VectorSearcher(RetrievalLoggerMixin):
         """
         Convert MetadataFilter to Pinecone filter format.
         
+        Note: product_name_pattern is NOT included here because Pinecone does not
+        support substring/contains matching. Product name filtering is applied
+        post-search in _apply_product_name_filter() instead.
+        
         Args:
             filters: MetadataFilter instance
             
@@ -458,15 +485,47 @@ class VectorSearcher(RetrievalLoggerMixin):
         if filters.min_rating is not None:
             filter_dict["rating"] = {"$gte": filters.min_rating}
         
-        # Product name pattern filter
-        if filters.product_name_pattern is not None:
-            # Use case-insensitive regex matching for product name
-            filter_dict["product_name"] = {
-                "$regex": f".*{filters.product_name_pattern}.*",
-                "$options": "i"  # Case insensitive
-            }
+        # product_name_pattern is handled post-search via _apply_product_name_filter()
         
         return filter_dict
+    
+    def _apply_product_name_filter(
+        self,
+        documents: List[Document],
+        scores: List[float],
+        pattern: str
+    ) -> tuple[List[Document], List[float]]:
+        """
+        Filter documents by checking if the product name contains the pattern.
+        
+        This is done post-search because Pinecone doesn't support substring matching.
+        Performs case-insensitive contains check against the product_name metadata field.
+        
+        Args:
+            documents: List of documents from vector search
+            scores: Corresponding similarity scores
+            pattern: Lowercase product name pattern to match (e.g. "iphone 12")
+            
+        Returns:
+            Tuple of (filtered_documents, filtered_scores)
+        """
+        if not documents or not pattern:
+            return documents, scores
+        
+        filtered_docs = []
+        filtered_scores = []
+        
+        for doc, score in zip(documents, scores):
+            product_name = doc.metadata.get("product_name", "")
+            if pattern in product_name.lower():
+                filtered_docs.append(doc)
+                filtered_scores.append(score)
+        
+        self.logger.info(
+            f"Product name filter '{pattern}': {len(documents)} -> {len(filtered_docs)} documents"
+        )
+        
+        return filtered_docs, filtered_scores
     
     def _apply_score_threshold(
         self, 

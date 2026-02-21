@@ -99,14 +99,20 @@ class TextProcessor:
         """
         Create a single Document from a DataFrame row.
         
+        Builds page_content by prepending product name, price, and rating
+        to the review text so the embedding captures product identity.
+        
         Args:
             row: DataFrame row containing product data
             
         Returns:
             Document: LangChain Document with content and metadata
         """
-        # Extract content from the specified field
-        content = str(row.get(self.config.content_field, "")).strip()
+        # Extract review text
+        review_text = str(row.get(self.config.content_field, "")).strip()
+        
+        # Build enriched content with product context for better embeddings
+        content = self._build_enriched_content(row, review_text)
         
         # Sanitize metadata
         metadata = self._sanitize_metadata(row)
@@ -118,6 +124,38 @@ class TextProcessor:
         )
         
         return document
+    
+    def _build_enriched_content(self, row: pd.Series, review_text: str) -> str:
+        """
+        Build enriched page_content by prepending product metadata to review text.
+        
+        This ensures the embedding captures product identity (name, price, rating)
+        alongside the review, improving retrieval for product-specific queries.
+        
+        Args:
+            row: DataFrame row containing product data
+            review_text: The review text content
+            
+        Returns:
+            str: Enriched content string
+        """
+        parts = []
+        
+        product_name = row.get("product_name")
+        if pd.notna(product_name) and str(product_name).strip():
+            parts.append(f"Product: {str(product_name).strip()}")
+        
+        price = row.get("price")
+        if pd.notna(price):
+            parts.append(f"Price: ${price}")
+        
+        rating = row.get("rating")
+        if pd.notna(rating):
+            parts.append(f"Rating: {rating}/5")
+        
+        parts.append(f"Review: {review_text}")
+        
+        return " | ".join(parts)
     
     def _sanitize_metadata(self, row: pd.Series) -> Dict[str, Any]:
         """

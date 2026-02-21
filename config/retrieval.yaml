@@ -56,6 +56,29 @@ embedding:
   # text-embedding-3-large: 3072, text-embedding-3-small: 1536, ada-002: 1536
   dimension: 3072
 
+# Metadata Extraction Configuration
+# Controls automatic extraction of filters from user queries
+metadata_extraction:
+  # Whether to enable metadata extraction
+  # When enabled, extracts product names, prices, and ratings from queries
+  enabled: true
+  
+  # LLM model to use for extraction
+  # Options: gpt-3.5-turbo, gpt-4, gpt-4-turbo
+  llm_model: gpt-3.5-turbo
+  
+  # Temperature for LLM generation (0.0-1.0)
+  # Lower values produce more deterministic results
+  temperature: 0.0
+  
+  # Maximum tokens for LLM response (50-500)
+  # Extraction typically requires 100-200 tokens
+  max_tokens: 200
+  
+  # Timeout for extraction in seconds (1-10)
+  # Prevents extraction from blocking the pipeline
+  timeout_seconds: 3
+
 # Contextual Compression Configuration
 # Controls LLM-based relevance filtering of retrieved documents
 compression:

@@ -186,8 +186,8 @@ class AgenticWorkflow:
         if self._is_follow_up_query(user_message, history):
             return {"route": "retrieve_followup"}
         
-        # Default to direct response for general queries
-        return {"route": "respond"}
+        # Default to direct response for general queries - changed it to retrieve
+        return {"route": "retrieve"}
     
     def _is_follow_up_query(self, query: str, history: List[BaseMessage]) -> bool:
         """Detect if query is a follow-up referencing prior product context.

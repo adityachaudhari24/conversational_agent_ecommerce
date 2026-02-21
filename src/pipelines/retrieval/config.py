@@ -67,6 +67,11 @@ class RetrievalSettings(BaseSettings):
     evaluation_metrics: List[str] = Field(default_factory=lambda: ["context_precision", "answer_relevancy"])
     evaluation_batch_size: int = Field(default=10, ge=1, le=100)
     
+    # Metadata Extraction Settings
+    metadata_extraction_enabled: bool = Field(default=True)
+    metadata_extraction_model: str = Field(default="gpt-3.5-turbo")
+    metadata_extraction_timeout: int = Field(default=3, ge=1, le=10)
+    
     # Logging Settings
     log_level: str = Field(default="INFO")
     structured_logging: bool = Field(default=True)
@@ -129,7 +134,7 @@ class ConfigurationLoader:
         
         # Merge YAML config with environment variables
         # Environment variables take precedence
-        merged_config = {**yaml_config}
+        merged_config = self._flatten_yaml_config(yaml_config)
         
         try:
             return RetrievalSettings(**merged_config)
@@ -163,6 +168,35 @@ class ConfigurationLoader:
             raise ConfigurationError(f"Invalid YAML configuration in {self.config_path}: {str(e)}")
         except Exception as e:
             raise ConfigurationError(f"Failed to read configuration file {self.config_path}: {str(e)}")
+    
+    def _flatten_yaml_config(self, yaml_config: Dict[str, Any]) -> Dict[str, Any]:
+        """Flatten nested YAML configuration to match RetrievalSettings field names.
+        
+        Args:
+            yaml_config: Nested YAML configuration dictionary
+            
+        Returns:
+            Flattened configuration dictionary with field names matching RetrievalSettings
+        """
+        flattened = {}
+        
+        # Extract metadata_extraction section
+        if 'metadata_extraction' in yaml_config:
+            metadata_section = yaml_config['metadata_extraction']
+            if isinstance(metadata_section, dict):
+                if 'enabled' in metadata_section:
+                    flattened['metadata_extraction_enabled'] = metadata_section['enabled']
+                if 'llm_model' in metadata_section:
+                    flattened['metadata_extraction_model'] = metadata_section['llm_model']
+                if 'timeout_seconds' in metadata_section:
+                    flattened['metadata_extraction_timeout'] = metadata_section['timeout_seconds']
+        
+        # Keep other top-level fields as-is for backward compatibility
+        for key, value in yaml_config.items():
+            if key != 'metadata_extraction' and key not in flattened:
+                flattened[key] = value
+        
+        return flattened
     
     def _extract_missing_keys(self, error: Exception) -> List[str]:
         """Extract missing required keys from validation error.

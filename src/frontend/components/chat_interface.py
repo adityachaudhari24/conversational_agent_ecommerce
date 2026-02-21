@@ -78,7 +78,7 @@ def _render_messages():
         st.markdown("""
         <div style="text-align: center; padding: 40px; color: #888;">
             <p>👋 Hi! I'm your e-commerce assistant.</p>
-            <p>Ask me about products, recommendations, or anything else!</p>
+            <p>Ask me about products, recommendations, I am trained on 2013 iphone reviews data on amazon</p>
         </div>
         """, unsafe_allow_html=True)
         return
