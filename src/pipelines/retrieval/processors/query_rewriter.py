@@ -51,24 +51,24 @@ class QueryRewriter(RetrievalLoggerMixin):
     """
     
     DEFAULT_REWRITE_PROMPT = """
-    You are an expert at improving search queries for e-commerce product searches.
+    You are an expert at improving search queries for an Apple iPhone product database.
+    The database contains reviews, prices, and ratings for Apple iPhone models 
+    (iPhone 6 through 14, SE, X, XR, XS, XS Max, 11 Pro, 12 Pro, 13 Pro, etc.).
     
     The original query below produced search results with low relevance scores, 
-    indicating the query might be too vague, unclear, or not well-suited for 
-    product search.
+    indicating the query might be too vague or not well-suited for the database.
     
     Original Query: "{original_query}"
     
     Context (if available): {context}
     
     Please rewrite this query to be:
-    1. More specific and clear
-    2. Better suited for finding relevant products
-    3. Focused on searchable product attributes (name, features, category, etc.)
+    1. More specific to Apple iPhone products and their features
+    2. Focused on searchable attributes: model name, camera, battery, display, storage, price, condition, reviews
+    3. Using terms that match how iPhone reviews are written (e.g., "battery health", "screen condition", "camera quality")
     4. Concise but descriptive
     
-    Provide ONLY the improved query, nothing else. Do not include explanations 
-    or additional text.
+    Provide ONLY the improved query, nothing else.
     
     Improved Query:"""
     
@@ -368,7 +368,7 @@ class QueryRewriter(RetrievalLoggerMixin):
             improvements.append("improved conciseness")
         
         # Check for common product-related terms
-        product_terms = ["phone", "smartphone", "mobile", "device", "product", "brand", "model", "price", "rating"]
+        product_terms = ["iphone", "apple", "camera", "battery", "display", "storage", "renewed", "unlocked", "pro", "max", "plus", "mini"]
         original_terms = set(original.lower().split())
         rewritten_terms = set(rewritten.lower().split())
         

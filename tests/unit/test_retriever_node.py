@@ -331,7 +331,7 @@ class TestRetrieverNodeIntegrationWithReformulator:
                 HumanMessage(content="What about the camera?")  # Follow-up
             ],
             "context": "",
-            "route": "retrieve_followup",
+            "route": "retrieve",
             "tool_result": "",
             "reformulated_query": ""
         }

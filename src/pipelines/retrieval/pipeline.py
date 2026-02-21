@@ -584,10 +584,10 @@ class RetrievalPipeline(RetrievalLoggerMixin):
                 )
                 
                 # Step 4: Check if we should rewrite the query
+                # Rewrite when relevance is low OR when compression filtered out all documents
                 should_rewrite = (
                     iteration < max_iterations - 1 and  # Not the last iteration
-                    self.query_rewriter.should_rewrite(avg_relevance) and
-                    len(compression_result.documents) > 0  # Only rewrite if we have some results
+                    self.query_rewriter.should_rewrite(avg_relevance)
                 )
                 
                 if should_rewrite:

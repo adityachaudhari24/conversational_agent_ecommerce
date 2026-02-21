@@ -56,7 +56,7 @@ class TestQueryReformulatorBasic:
         mock_llm_client.invoke.return_value = mock_response
         
         # Execute
-        result = reformulator.reformulate(query, history)
+        result = reformulator.reformulate(query, history, is_follow_up=True)
         
         # Verify
         assert result == "Tell me more about the Samsung Galaxy S24"
@@ -121,33 +121,39 @@ class TestQueryReformulatorBasic:
 
 
 class TestQueryReformulatorPassthrough:
-    """Test passthrough behavior when reformulation is not needed."""
+    """Test behavior when reformulation uses standalone mode."""
     
-    def test_passthrough_when_no_history(self, reformulator, mock_llm_client):
-        """Test that query is returned unchanged when no history is provided.
+    def test_standalone_mode_when_no_history(self, reformulator, mock_llm_client):
+        """Test that standalone mode is used when no history is provided.
         
         **Validates: Requirement 4.2, 5.1, 5.2**
         
-        When there's no conversation history, the reformulator should return
-        the original query without calling the LLM.
+        When there's no conversation history, the reformulator should use
+        standalone mode to optimize the query for vector search.
         """
         query = "What phones do you have under $500?"
         
-        # No history provided
-        result = reformulator.reformulate(query, history=None)
+        mock_response = Mock()
+        mock_response.content = "smartphones under $500 budget options"
+        mock_llm_client.invoke.return_value = mock_response
         
-        assert result == query
-        mock_llm_client.invoke.assert_not_called()
+        result = reformulator.reformulate(query, history=None, is_follow_up=False)
+        
+        assert result == "smartphones under $500 budget options"
+        mock_llm_client.invoke.assert_called_once()
     
-    def test_passthrough_when_empty_history(self, reformulator, mock_llm_client):
-        """Test that query is returned unchanged when history is empty list."""
+    def test_standalone_mode_when_empty_history(self, reformulator, mock_llm_client):
+        """Test that standalone mode is used when history is empty list."""
         query = "Show me laptops"
-        history = []
         
-        result = reformulator.reformulate(query, history)
+        mock_response = Mock()
+        mock_response.content = "laptop reviews and specifications"
+        mock_llm_client.invoke.return_value = mock_response
         
-        assert result == query
-        mock_llm_client.invoke.assert_not_called()
+        result = reformulator.reformulate(query, history=[], is_follow_up=False)
+        
+        assert result == "laptop reviews and specifications"
+        mock_llm_client.invoke.assert_called_once()
     
     def test_passthrough_when_llm_returns_empty_string(self, reformulator, mock_llm_client):
         """Test fallback to original query when LLM returns empty response."""
@@ -287,15 +293,17 @@ class TestQueryReformulatorAsync:
     
     @pytest.mark.asyncio
     async def test_areformulate_passthrough_when_no_history(self, reformulator, mock_llm_client):
-        """Test async passthrough when no history is provided."""
+        """Test async standalone mode when no history is provided."""
         query = "What phones do you have?"
         
-        mock_llm_client.ainvoke = AsyncMock()
+        mock_response = Mock()
+        mock_response.content = "smartphone options and reviews"
+        mock_llm_client.ainvoke = AsyncMock(return_value=mock_response)
         
-        result = await reformulator.areformulate(query, history=None)
+        result = await reformulator.areformulate(query, history=None, is_follow_up=False)
         
-        assert result == query
-        mock_llm_client.ainvoke.assert_not_called()
+        assert result == "smartphone options and reviews"
+        mock_llm_client.ainvoke.assert_called_once()
     
     @pytest.mark.asyncio
     async def test_areformulate_error_handling(self, reformulator, mock_llm_client):
@@ -338,64 +346,64 @@ class TestQueryReformulatorAsync:
 class TestQueryReformulatorMessageBuilding:
     """Test the internal message building logic."""
     
-    def test_build_reformulation_messages_includes_system_prompt(self, reformulator):
-        """Test that reformulation messages include the system prompt."""
+    def test_build_messages_followup_includes_system_prompt(self, reformulator):
+        """Test that follow-up mode messages include the follow-up system prompt."""
         query = "Tell me more"
         history = [
             HumanMessage(content="Show me phones"),
             AIMessage(content="The Samsung Galaxy S24 is available.")
         ]
         
-        messages = reformulator._build_reformulation_messages(query, history)
+        messages = reformulator._build_messages(query, history, is_follow_up=True)
         
-        # Should have at least 2 messages: system prompt + user message
         assert len(messages) >= 2
-        
-        # First message should be system message
         assert isinstance(messages[0], SystemMessage)
         assert "reformulation" in messages[0].content.lower()
     
-    def test_build_reformulation_messages_includes_history(self, reformulator):
-        """Test that reformulation messages include conversation history."""
+    def test_build_messages_standalone_includes_optimizer_prompt(self, reformulator):
+        """Test that standalone mode messages include the search optimizer prompt."""
+        query = "I want a good gaming phone"
+        
+        messages = reformulator._build_messages(query, history=None, is_follow_up=False)
+        
+        assert len(messages) >= 2
+        assert isinstance(messages[0], SystemMessage)
+        assert "search query optimizer" in messages[0].content.lower()
+    
+    def test_build_messages_followup_includes_history(self, reformulator):
+        """Test that follow-up mode messages include conversation history."""
         query = "What about the camera?"
         history = [
             HumanMessage(content="Show me phones"),
             AIMessage(content="The iPhone 15 Pro is available.")
         ]
         
-        messages = reformulator._build_reformulation_messages(query, history)
+        messages = reformulator._build_messages(query, history, is_follow_up=True)
         
-        # Last message should contain the history and query
         last_message = messages[-1]
         assert isinstance(last_message, HumanMessage)
         assert "Show me phones" in last_message.content
         assert "iPhone 15 Pro" in last_message.content
         assert query in last_message.content
     
-    def test_build_reformulation_messages_limits_history_length(self, reformulator):
+    def test_build_messages_followup_limits_history_length(self, reformulator):
         """Test that only recent history is included to save tokens."""
         query = "Tell me more"
         
-        # Create long history (more than 6 messages)
         history = []
         for i in range(10):
             history.append(HumanMessage(content=f"Question {i}"))
             history.append(AIMessage(content=f"Answer {i}"))
         
-        messages = reformulator._build_reformulation_messages(query, history)
+        messages = reformulator._build_messages(query, history, is_follow_up=True)
         
-        # Should limit to last 6 messages (3 turns)
         last_message = messages[-1]
-        
-        # Should NOT include early messages
         assert "Question 0" not in last_message.content
         assert "Answer 0" not in last_message.content
-        
-        # Should include recent messages
         assert "Question 9" in last_message.content
         assert "Answer 9" in last_message.content
     
-    def test_build_reformulation_messages_formats_history_correctly(self, reformulator):
+    def test_build_messages_followup_formats_history_correctly(self, reformulator):
         """Test that history is formatted with User/Assistant labels."""
         query = "What about battery?"
         history = [
@@ -403,26 +411,21 @@ class TestQueryReformulatorMessageBuilding:
             AIMessage(content="The Samsung Galaxy S24 is available.")
         ]
         
-        messages = reformulator._build_reformulation_messages(query, history)
+        messages = reformulator._build_messages(query, history, is_follow_up=True)
         
         last_message = messages[-1]
         assert "User:" in last_message.content
         assert "Assistant:" in last_message.content
     
-    def test_build_reformulation_messages_with_short_history(self, reformulator):
-        """Test message building with history shorter than limit."""
-        query = "Tell me more"
-        history = [
-            HumanMessage(content="Show me phones"),
-            AIMessage(content="The iPhone 15 is available.")
-        ]
+    def test_build_messages_standalone_contains_query(self, reformulator):
+        """Test that standalone mode message contains the user query."""
+        query = "I want a cheap phone with good camera"
         
-        messages = reformulator._build_reformulation_messages(query, history)
+        messages = reformulator._build_messages(query, history=None, is_follow_up=False)
         
-        # Should include all history when it's short
         last_message = messages[-1]
-        assert "Show me phones" in last_message.content
-        assert "iPhone 15" in last_message.content
+        assert isinstance(last_message, HumanMessage)
+        assert query in last_message.content
 
 
 class TestQueryReformulatorEdgeCases:

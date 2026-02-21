@@ -1,8 +1,12 @@
 """Agentic workflow implementation using LangGraph.
 
-This module implements a simplified agentic RAG workflow with three main nodes:
-Router → Retriever → Generator, plus a Tool node for extensibility demonstration.
+This module implements a simplified agentic RAG workflow with the following flow:
+Router → Reformulator → Retriever → Generator, plus a Tool node for extensibility.
 The workflow uses LangGraph StateGraph for state management and conditional routing.
+
+All retrieve-type queries (both fresh and follow-up) flow through the reformulator,
+which uses the LLM to either resolve references from history (follow-ups) or optimize
+the query for better vector search retrieval (standalone queries).
 """
 
 from typing import Annotated, Any, Dict, List, Literal, Optional, Sequence, TypedDict
@@ -18,7 +22,7 @@ from ..llm.client import LLMClient
 from .reformulator import QueryReformulator
 
 
-# Follow-up detection patterns
+# Follow-up detection patterns (used by reformulator node to pick prompt mode)
 CONTEXTUAL_REFERENCES = [
     "that", "this", "it", "they", "them", "those", "these",
     "the one", "the same", "which one",
@@ -35,15 +39,12 @@ FOLLOW_UP_PHRASES = [
 class AgentState(TypedDict):
     """State for the agentic workflow.
     
-    This TypedDict defines the state that flows through the LangGraph workflow.
-    Each node can read from and write to this state.
-    
     Attributes:
         messages: Conversation messages (managed by LangGraph)
         context: Retrieved context from the retrieval pipeline
         route: Routing decision ("retrieve", "tool", "respond")
         tool_result: Result from tool execution
-        reformulated_query: Reformulated query for follow-up retrieval
+        reformulated_query: Reformulated/optimized query for retrieval
     """
     messages: Annotated[Sequence[BaseMessage], add_messages]
     context: str
@@ -53,21 +54,20 @@ class AgentState(TypedDict):
 
 
 class AgenticWorkflow:
-    """LangGraph-based agentic RAG workflow with 3 main nodes + tool node.
+    """LangGraph-based agentic RAG workflow.
     
-    This class implements a simplified agentic workflow that:
-    1. Routes queries based on content analysis
-    2. Retrieves relevant documents when needed
-    3. Executes tools for specific requests (product comparison demo)
-    4. Generates responses using context and conversation history
+    Flow: Router → Reformulator → Retriever → Generator (with Tool branch).
     
-    The workflow is designed to be extensible for future MCP/tools integration.
+    The reformulator always runs for retrieve-type queries, using the LLM to either:
+    - Resolve pronoun/reference follow-ups using conversation history
+    - Optimize standalone queries for better vector search retrieval
     
     Attributes:
         config: Workflow configuration
         llm_client: LLM client for routing decisions
         retriever: Retrieval pipeline for document search
         generator: Response generator for final output
+        reformulator: Query reformulator for search optimization
         workflow: LangGraph StateGraph instance
         app: Compiled workflow application
     """
@@ -98,12 +98,15 @@ class AgenticWorkflow:
         self.app = self.workflow.compile()
     
     def _build_workflow(self) -> StateGraph:
-        """Build the LangGraph workflow with Router → Retriever/Tool → Generator.
+        """Build the LangGraph workflow.
+        
+        Retrieve path: Router → Reformulator → Retriever → Generator
+        Tool path:     Router → Tool → Generator
+        Respond path:  Router → Generator
         
         Returns:
             StateGraph instance with nodes and edges configured
         """
-        # Create the state graph
         workflow = StateGraph(AgentState)
         
         # Add nodes
@@ -122,31 +125,30 @@ class AgenticWorkflow:
             self._route_decision,
             {
                 "reformulator": "reformulator",
-                "retriever": "retriever",
                 "tool": "tool",
                 "generator": "generator"
             }
         )
         
-        # Add edge from reformulator to retriever
+        # Reformulator always flows to retriever
         workflow.add_edge("reformulator", "retriever")
         
-        # Add edges from retriever and tool to generator
+        # Retriever and tool both flow to generator
         workflow.add_edge("retriever", "generator")
         workflow.add_edge("tool", "generator")
         
-        # Set finish point
+        # Generator is the finish
         workflow.add_edge("generator", END)
         
         return workflow
     
     def _router_node(self, state: AgentState) -> Dict[str, Any]:
-        """Route query to retriever, tool, or direct response.
+        """Route query to retrieve (via reformulator), tool, or direct response.
         
-        This node analyzes the user query and decides which path to take:
-        - "retrieve": Product-related queries needing database lookup
-        - "tool": Requests to compare products (demo functionality)
-        - "respond": General conversation or questions answerable without retrieval
+        Routing priority:
+        1. Tool keywords → tool node
+        2. Product keywords → retrieve (reformulator → retriever)
+        3. Default fallback → retrieve
         
         Args:
             state: Current workflow state
@@ -154,7 +156,6 @@ class AgenticWorkflow:
         Returns:
             Updated state with routing decision
         """
-        # Get the latest user message
         user_message = None
         for msg in reversed(state["messages"]):
             if isinstance(msg, HumanMessage):
@@ -162,39 +163,23 @@ class AgenticWorkflow:
                 break
         
         if not user_message:
-            # No user message found, default to direct response
             return {"route": "respond"}
         
-        # Simple keyword-based routing for MVP
         query_lower = user_message.lower()
         
         # Check for tool keywords first (more specific)
         if any(keyword in query_lower for keyword in self.config.tool_keywords):
             return {"route": "tool"}
         
-        # Check for product keywords
-        if any(keyword in query_lower for keyword in self.config.product_keywords):
-            return {"route": "retrieve"}
-        
-        # Check for follow-up queries when no explicit keywords found
-        # Get conversation history (excluding the current user message)
-        history = []
-        for msg in state["messages"][:-1]:  # Exclude the last message (current query)
-            if not isinstance(msg, SystemMessage):  # Exclude system messages
-                history.append(msg)
-        
-        if self._is_follow_up_query(user_message, history):
-            return {"route": "retrieve_followup"}
-        
-        # Default to direct response for general queries - changed it to retrieve
+        # Everything else goes through retrieve (reformulator will optimize the query)
         return {"route": "retrieve"}
     
     def _is_follow_up_query(self, query: str, history: List[BaseMessage]) -> bool:
         """Detect if query is a follow-up referencing prior product context.
         
-        This method checks two conditions:
-        1. Query contains contextual references (pronouns, follow-up phrases)
-        2. Recent assistant messages contain product-related content
+        Used by the reformulator node to decide which prompt mode to use:
+        - True → follow-up mode (resolve references from history)
+        - False → standalone mode (optimize query for vector search)
         
         Args:
             query: The user query to analyze
@@ -208,22 +193,17 @@ class AgenticWorkflow:
         
         query_lower = query.lower()
         
-        # Check if query contains contextual references
         has_contextual_ref = any(
             ref in query_lower for ref in CONTEXTUAL_REFERENCES
         )
-        
-        # Check if query contains follow-up phrases
         has_follow_up_phrase = any(
             phrase in query_lower for phrase in FOLLOW_UP_PHRASES
         )
         
-        # Query must have at least one contextual indicator
         if not (has_contextual_ref or has_follow_up_phrase):
             return False
         
         # Check if recent assistant messages contain product-related content
-        # Look at the last few assistant messages (up to 3)
         recent_assistant_messages = []
         for msg in reversed(history):
             if isinstance(msg, AIMessage):
@@ -231,21 +211,19 @@ class AgenticWorkflow:
                 if len(recent_assistant_messages) >= 3:
                     break
         
-        # Check if any recent assistant message contains product keywords
-        has_product_context = False
         for msg_content in recent_assistant_messages:
             if any(keyword in msg_content for keyword in self.config.product_keywords):
-                has_product_context = True
-                break
+                return True
         
-        return has_product_context
+        return False
     
     def _reformulator_node(self, state: AgentState) -> Dict[str, Any]:
-        """Reformulate follow-up query using conversation history.
+        """Reformulate query for optimal retrieval using the LLM.
         
-        This node uses the QueryReformulator to rewrite ambiguous follow-up queries
-        into standalone queries with explicit product/topic references extracted
-        from conversation history.
+        Detects whether the query is a follow-up (referencing prior conversation)
+        and picks the appropriate reformulation mode:
+        - Follow-up: resolves pronouns/references using conversation history
+        - Standalone: optimizes the raw query for better vector search
         
         Args:
             state: Current workflow state
@@ -253,7 +231,6 @@ class AgenticWorkflow:
         Returns:
             Updated state with reformulated query
         """
-        # Get the latest user message
         user_message = None
         for msg in reversed(state["messages"]):
             if isinstance(msg, HumanMessage):
@@ -265,17 +242,21 @@ class AgenticWorkflow:
         
         # Get conversation history (excluding the current user message)
         history = []
-        for msg in state["messages"][:-1]:  # Exclude the last message (current query)
-            if not isinstance(msg, SystemMessage):  # Exclude system messages
+        for msg in state["messages"][:-1]:
+            if not isinstance(msg, SystemMessage):
                 history.append(msg)
         
+        # Detect if this is a follow-up to pick the right prompt mode
+        is_follow_up = self._is_follow_up_query(user_message, history)
+        
         try:
-            # Reformulate the query using conversation history
-            reformulated = self.reformulator.reformulate(user_message, history)
+            reformulated = self.reformulator.reformulate(
+                query=user_message,
+                history=history if history else None,
+                is_follow_up=is_follow_up
+            )
             return {"reformulated_query": reformulated}
-            
-        except Exception as e:
-            # On error, use original query
+        except Exception:
             return {"reformulated_query": user_message}
     
     def _retriever_node(self, state: AgentState) -> Dict[str, Any]:
@@ -416,11 +397,8 @@ For now, this serves as a placeholder showing the workflow structure."""
             )
             return {"messages": [AIMessage(content=error_response)]}
     
-    def _route_decision(self, state: AgentState) -> Literal["reformulator", "retriever", "tool", "generator"]:
+    def _route_decision(self, state: AgentState) -> Literal["reformulator", "tool", "generator"]:
         """Conditional edge: decide next node based on route.
-        
-        This function is used by LangGraph to determine which node to visit
-        next based on the routing decision made by the router node.
         
         Args:
             state: Current workflow state
@@ -430,10 +408,8 @@ For now, this serves as a placeholder showing the workflow structure."""
         """
         route = state.get("route", "respond")
         
-        if route == "retrieve_followup":
+        if route == "retrieve":
             return "reformulator"
-        elif route == "retrieve":
-            return "retriever"
         elif route == "tool":
             return "tool"
         else:

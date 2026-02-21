@@ -244,7 +244,7 @@ def main():
         messages = st.session_state.get("messages", [])
 
         if not messages:
-            st.caption("👋 Hi! I'm your shopping assistant. Ask me about products, recommendations, or anything else!")
+            st.caption("👋 Hi! I'm your shopping assistant. Ask me about iphones I am trained on 2013 iphone reviews data on amazon!")
         else:
             for msg in messages:
                 with st.chat_message(msg["role"]):

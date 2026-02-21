@@ -281,7 +281,7 @@ class TestRouterNodeFollowUpRouting:
         
         result = workflow._router_node(state)
         
-        assert result["route"] == "retrieve_followup", "Follow-up query should route to retrieve_followup for reformulation"
+        assert result["route"] == "retrieve", "Follow-up query should route to retrieve (reformulator handles follow-up detection)"
     
     def test_router_routes_product_keyword_to_retrieve(self, workflow):
         """Test that queries with product keywords always route to retrieve.
@@ -324,9 +324,12 @@ class TestRouterNodeFollowUpRouting:
         assert result["route"] == "retrieve"
     
     def test_router_routes_general_query_to_respond(self, workflow):
-        """Test that general queries without keywords or follow-up context route to respond.
+        """Test that general queries without keywords or follow-up context route to retrieve.
         
         **Validates: Requirement 4.1, 4.4**
+        
+        With the unified retrieve flow, all non-tool queries go through
+        reformulator → retriever, so the default is now retrieve.
         """
         state = {
             "messages": [
@@ -340,7 +343,7 @@ class TestRouterNodeFollowUpRouting:
         
         result = workflow._router_node(state)
         
-        assert result["route"] == "respond", "General query should route to respond"
+        assert result["route"] == "retrieve", "All non-tool queries now route to retrieve"
     
     def test_router_routes_tool_keyword_to_tool(self, workflow):
         """Test that tool keywords route to tool node."""
@@ -407,7 +410,7 @@ class TestRouterNodeFollowUpRouting:
         
         result = workflow._router_node(state)
         
-        assert result["route"] == "retrieve_followup", "Should detect follow-up even with system messages"
+        assert result["route"] == "retrieve", "Should route to retrieve (reformulator handles follow-up detection)"
 
 
 class TestFollowUpDetectionEdgeCases:

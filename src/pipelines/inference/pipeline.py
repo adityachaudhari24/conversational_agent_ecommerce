@@ -687,11 +687,8 @@ class InferencePipeline:
     ) -> AsyncIterator[str]:
         """Execute the streaming workflow.
         
-        This method implements the core streaming logic:
-        1. Get conversation history
-        2. Prepare context through agentic workflow (without final generation)
-        3. Stream response generation with context
-        4. Update conversation history with complete response
+        Uses the agentic workflow (which includes reformulation and routing)
+        to generate the full response, then streams it out in chunks.
         
         Args:
             query: User query string
@@ -707,7 +704,6 @@ class InferencePipeline:
             # Step 0: Ensure session exists (auto-create if needed)
             session = self.conversation_store.get_session(session_id)
             if session is None:
-                # Create new session with the provided session_id
                 from datetime import datetime
                 now = datetime.utcnow().isoformat() + "Z"
                 from .conversation.store import Session
@@ -719,46 +715,23 @@ class InferencePipeline:
                 )
                 self.conversation_store._save_session(session)
             
-            # Step 1: Get conversation history from ConversationStore (disk-backed)
+            # Step 1: Get conversation history from ConversationStore
             history = self.conversation_store.get_langchain_messages(session_id)
             
-            # Step 2: Prepare context using agentic workflow
-            # For streaming, we need to get the context without final generation
-            # This is a simplified approach - in a full implementation, you might
-            # want to modify the agentic workflow to support streaming
+            # Step 2: Use the agentic workflow (includes reformulator + routing)
+            complete_response = await self.agentic_workflow.arun(query, history)
             
-            # For now, we'll use the response generator directly with context
-            # In a production system, you'd want to integrate streaming into the workflow
-            
-            # Get context from retrieval if this is a product-related query
-            context = None
-            query_lower = query.lower()
-            
-            # Simple keyword check for context retrieval
-            if any(keyword in query_lower for keyword in self.config.workflow_config.product_keywords):
-                try:
-                    retrieval_result = self.retrieval_pipeline.retrieve(query)
-                    context = retrieval_result.formatted_context
-                except Exception:
-                    # Continue without context if retrieval fails
-                    context = None
-            
-            # Step 3: Stream response generation
-            async for chunk in self.response_generator.astream(
-                query=query,
-                context=context,
-                history=history
-            ):
-                complete_response += chunk
+            # Step 3: Stream the response in chunks
+            chunk_size = 4  # characters per chunk for smooth streaming
+            for i in range(0, len(complete_response), chunk_size):
+                chunk = complete_response[i:i + chunk_size]
                 yield chunk
             
             # Step 4: Update conversation history with complete response
             try:
                 self.conversation_store.add_message(session_id, "user", query)
                 self.conversation_store.add_message(session_id, "assistant", complete_response)
-            except Exception as e:
-                # Log error but don't fail the streaming operation
-                # In a production system, you might want to retry or handle this differently
+            except Exception:
                 pass
                 
         except Exception as e:

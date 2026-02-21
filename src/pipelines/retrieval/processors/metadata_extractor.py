@@ -48,22 +48,39 @@ class MetadataExtractor(RetrievalLoggerMixin):
         self.client = OpenAI(api_key=api_key)
         
         # Extraction prompt template
-        self.extraction_prompt = """Extract structured metadata from the following query.
+        self.extraction_prompt = """Extract structured metadata from the following user query about Apple iPhones.
+The product database contains ONLY Apple iPhone models (iPhone 6 through 14, SE, X, XR, XS, XS Max, 11 Pro, 12 Pro, 13 Pro, etc.) with reviews, prices, and ratings.
+
 Return a JSON object with these fields (use null if not present):
-- product_name_pattern: string (product name or brand mentioned)
+- product_name_pattern: string (ONLY extract a specific iPhone model name like "iPhone 12", "iPhone XS Max", "iPhone SE". Do NOT use generic terms like "phone", "smartphone", "iPhone" alone, or "Apple")
 - min_price: number (minimum price in dollars)
 - max_price: number (maximum price in dollars)
 - min_rating: number (minimum rating, 0-5 scale)
 
 Examples:
-Query: "iPhone 12 price"
-Output: {{"product_name_pattern": "iPhone 12", "min_price": null, "max_price": null, "min_rating": null}}
+Query: "iPhone 12 Pro reviews"
+Output: {{"product_name_pattern": "iPhone 12 Pro", "min_price": null, "max_price": null, "min_rating": null}}
 
-Query: "phones under $300"
+Query: "iPhones under $300"
 Output: {{"product_name_pattern": null, "min_price": null, "max_price": 300, "min_rating": null}}
 
-Query: "highly rated Samsung phones over $400"
-Output: {{"product_name_pattern": "Samsung", "min_price": 400, "max_price": null, "min_rating": 4.0}}
+Query: "best camera phone"
+Output: {{"product_name_pattern": null, "min_price": null, "max_price": null, "min_rating": null}}
+
+Query: "iPhone XS Max price"
+Output: {{"product_name_pattern": "iPhone XS Max", "min_price": null, "max_price": null, "min_rating": null}}
+
+Query: "highly rated iPhones over $400"
+Output: {{"product_name_pattern": null, "min_price": 400, "max_price": null, "min_rating": 4.0}}
+
+Query: "iPhone 11 Pro Max vs iPhone 12 Pro"
+Output: {{"product_name_pattern": null, "min_price": null, "max_price": null, "min_rating": null}}
+
+Query: "cheap iPhone with good battery"
+Output: {{"product_name_pattern": null, "min_price": null, "max_price": null, "min_rating": null}}
+
+Query: "iPhone 8 Plus reviews under $200"
+Output: {{"product_name_pattern": "iPhone 8 Plus", "min_price": null, "max_price": 200, "min_rating": null}}
 
 Query: "{query}"
 Output:"""
