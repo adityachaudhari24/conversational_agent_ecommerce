@@ -181,11 +181,18 @@ This document provides a visual representation of the complete data flow and pro
 │                            │                                  │
 │                            ▼                                  │
 │  ┌─────────────────────────────────────────────┐            │
-│  │ 3.4 Context Compression  🔵 DETERMINISTIC    │            │
+│  │ 3.4 Context Compression  🟢 LLM CALLS        │            │
 │  │     (processors/context_compressor.py)       │            │
-│  │     - Rank documents by relevance            │            │
-│  │     - Remove redundant information           │            │
-│  │     - Fit within token limits                │            │
+│  │     - Uses GPT-3.5-turbo for filtering      │            │
+│  │     - ONE LLM call PER DOCUMENT              │            │
+│  │     - Asks: "Is this doc relevant?"          │            │
+│  │     - Response: "Yes" or "No"                │            │
+│  │     - Filters out irrelevant documents       │            │
+│  │                                              │            │
+│  │     ⚡ MULTIPLE LLM CALLS (one per doc)      │            │
+│  │     💰 ~$0.0001 per document                 │            │
+│  │     ⏱️  ~200ms per document                   │            │
+│  │     📊 5 docs = 5 calls = ~1000ms total      │            │
 │  └─────────────────────────────────────────────┘            │
 │                            │                                  │
 │                            ▼                                  │
@@ -785,11 +792,6 @@ The system is designed to handle complex, multi-turn conversations while maintai
   - Database query (ChromaDB/Pinecone)
   - Fast (~100-200ms)
   
-✓ Context Compression
-  - Sorting by relevance score
-  - Token counting
-  - Truncation logic
-  
 ✓ Document Formatting
   - String templates
   - Metadata injection
@@ -810,82 +812,158 @@ The system is designed to handle complex, multi-turn conversations while maintai
 
 🟢 LLM API CALLS (Slow, Costs Money)
 ────────────────────────────────────
-✓ Response Generation (Step 5.1)
-  - PRIMARY LLM CALL in the pipeline
-  - Sends complete prompt to OpenAI/Anthropic
-  - Receives generated text response
-  - Time: 1-2 seconds (depends on response length)
-  - Cost: ~$0.001-0.01 per request (depends on tokens)
-  
-  Example API call:
-  POST https://api.openai.com/v1/chat/completions
-  {
-    "model": "gpt-4o-mini",
-    "messages": [
-      {"role": "system", "content": "You are..."},
-      {"role": "user", "content": "Show me phones"},
-      {"role": "assistant", "content": "Here are..."},
-      {"role": "user", "content": "Which has best camera?"}
-    ],
-    "temperature": 0.0,
-    "max_tokens": 2048
-  }
 
-✓ Query Reformulation (Step 2.5) - NEW!
-────────────────────────────────────────
-✓ Query Reformulator (for follow-ups)
-  - SECOND LLM CALL (only for follow-up queries)
-  - Rewrites ambiguous queries with explicit refs
-  - Example: "tell me more" → "tell me more about Samsung A54"
-  - Time: ~500ms
-  - Cost: ~$0.001 per follow-up
-  - ✅ NOW IMPLEMENTED (not in original MVP)
+1️⃣ Query Reformulation (Step 2.5) - For Follow-ups Only
+   ─────────────────────────────────────────────────────
+   - FIRST LLM CALL (only triggered for follow-up queries)
+   - Rewrites ambiguous queries with explicit references
+   - Example: "tell me more" → "tell me more about Samsung A54"
+   - Model: gpt-4o-mini or gpt-3.5-turbo
+   - Time: ~500ms
+   - Cost: ~$0.001 per follow-up
+   - ✅ Implemented in QueryReformulator
+
+2️⃣ Context Compression (Step 3.4) - For Every Retrieved Doc
+   ──────────────────────────────────────────────────────────
+   - MULTIPLE LLM CALLS (one per document from vector search)
+   - Evaluates each document: "Is this relevant to the query?"
+   - Response: "Yes" (keep) or "No" (filter out)
+   - Model: gpt-3.5-turbo (cheap & fast)
+   - Time: ~200ms per document
+   - Cost: ~$0.0001 per document
+   - Example: 5 docs = 5 LLM calls = ~1000ms, ~$0.0005
+   - ✅ Implemented in ContextCompressor
+   
+   Example compression flow:
+   Vector Search Returns: [Doc1, Doc2, Doc3, Doc4, Doc5]
+   ↓
+   LLM Call 1: "Is Doc1 relevant?" → "Yes" ✅
+   LLM Call 2: "Is Doc2 relevant?" → "Yes" ✅
+   LLM Call 3: "Is Doc3 relevant?" → "No" ❌
+   LLM Call 4: "Is Doc4 relevant?" → "No" ❌
+   LLM Call 5: "Is Doc5 relevant?" → "Yes" ✅
+   ↓
+   Filtered Result: [Doc1, Doc2, Doc5]
+
+3️⃣ Response Generation (Step 5.1) - Always
+   ────────────────────────────────────────
+   - MAIN LLM CALL in the pipeline
+   - Sends complete prompt to OpenAI/Anthropic
+   - Receives generated text response
+   - Model: gpt-4o-mini (default) or gpt-4o
+   - Time: 1-2 seconds (depends on response length)
+   - Cost: ~$0.002-0.01 per request (depends on tokens)
+   
+   Example API call:
+   POST https://api.openai.com/v1/chat/completions
+   {
+     "model": "gpt-4o-mini",
+     "messages": [
+       {"role": "system", "content": "You are..."},
+       {"role": "user", "content": "Show me phones"},
+       {"role": "assistant", "content": "Here are..."},
+       {"role": "user", "content": "Which has best camera?"}
+     ],
+     "temperature": 0.0,
+     "max_tokens": 2048
+   }
+
+
+TOTAL LLM CALLS PER REQUEST
+────────────────────────────
+
+Standard Query (no follow-up):
+├─ Context Compression: 3-5 calls (one per doc)
+└─ Response Generation: 1 call
+Total: 4-6 LLM calls
+
+Follow-Up Query:
+├─ Query Reformulation: 1 call
+├─ Context Compression: 3-5 calls (one per doc)
+└─ Response Generation: 1 call
+Total: 5-7 LLM calls
 
 
 COST & PERFORMANCE IMPLICATIONS
 ────────────────────────────────
-Standard Query Pipeline Time: ~2.2 seconds
-├─ Deterministic operations: ~200ms (9%)
-├─ Vector search: ~100ms (5%)
-└─ LLM generation: ~1900ms (86%)  ← BOTTLENECK
 
-Follow-Up Query Pipeline Time: ~2.7 seconds
-├─ Deterministic operations: ~200ms (7%)
-├─ Query reformulation (LLM): ~500ms (19%)  ← NEW!
-├─ Vector search: ~100ms (4%)
-└─ LLM generation: ~1900ms (70%)  ← STILL MAIN BOTTLENECK
+Standard Query Pipeline Time: ~3.2 seconds
+├─ Deterministic operations: ~200ms (6%)
+├─ Vector search: ~100ms (3%)
+├─ Context compression (5 docs): ~1000ms (31%)  ← NEW!
+└─ LLM generation: ~1900ms (60%)  ← STILL MAIN BOTTLENECK
+
+Follow-Up Query Pipeline Time: ~3.7 seconds
+├─ Deterministic operations: ~200ms (5%)
+├─ Query reformulation (LLM): ~500ms (14%)
+├─ Vector search: ~100ms (3%)
+├─ Context compression (5 docs): ~1000ms (27%)  ← NEW!
+└─ LLM generation: ~1900ms (51%)  ← STILL MAIN BOTTLENECK
 
 Total Cost per Request:
-├─ Standard query: ~$0.002-0.01
+├─ Standard query: ~$0.0025-0.011
+│  ├─ Context compression (5 docs): ~$0.0005
 │  └─ LLM generation: ~$0.002-0.01
-├─ Follow-up query: ~$0.003-0.011
+├─ Follow-up query: ~$0.0035-0.012
 │  ├─ Query reformulation: ~$0.001
+│  ├─ Context compression (5 docs): ~$0.0005
 │  └─ LLM generation: ~$0.002-0.01
 
 KEY INSIGHTS:
-- Most of the pipeline is still deterministic (fast & free)
-- Follow-up queries add ONE extra LLM call for reformulation
-- Routing with follow-up detection is still deterministic (free)
-- Retrieval is fast and cheap (vector search)
-- Two LLM calls for follow-ups: reformulation + generation
-- Could cache reformulated queries for repeated patterns
+- Context compression adds 5-7 LLM calls per request (cheap but adds up)
+- Each compression call is very cheap (~$0.0001) but adds latency
+- Compression can be disabled in config if speed > quality
+- Follow-up queries have the most LLM calls (up to 7 total)
+- Generation is still the most expensive single call
+- Compression saves money on generation by reducing context size
 
 
-COMPARISON: LLM-Based Router vs Keyword Router
-───────────────────────────────────────────────
-❌ LLM-Based Router (NOT used in this system):
-   - Would call LLM to analyze query intent
-   - Cost: +$0.001 per request
-   - Time: +500-1000ms per request
-   - More accurate but expensive
+OPTIMIZATION OPTIONS
+────────────────────
 
-✅ History-Aware Keyword Router (USED in this system):
-   - Pattern matching + conversation history analysis
-   - Cost: $0 (deterministic)
-   - Time: <1ms
-   - Detects follow-ups without LLM
-   - Triggers reformulation only when needed
-   - Good balance of accuracy and efficiency
+1. Disable Compression (faster but less accurate):
+   compression_enabled: false
+   - Saves ~1000ms and 5 LLM calls
+   - But sends more irrelevant context to generation
+   - May increase generation cost
+
+2. Reduce Retrieved Documents:
+   top_k: 3 (instead of 5)
+   - Fewer compression calls (3 instead of 5)
+   - Saves ~400ms and 2 LLM calls
+
+3. Use Embedding-Based Filtering (instead of LLM):
+   - Filter by similarity score threshold
+   - Free and instant
+   - Less accurate than LLM evaluation
+
+4. Batch Compression (future optimization):
+   - Send multiple docs in one LLM call
+   - Reduce API overhead
+   - Not currently implemented
+
+
+COMPARISON: With vs Without Compression
+────────────────────────────────────────
+
+WITHOUT Compression:
+├─ Time: ~2.2 seconds
+├─ Cost: ~$0.002-0.01
+├─ Context sent to generation: 5 docs (2500 tokens)
+└─ Response quality: May include irrelevant info
+
+WITH Compression:
+├─ Time: ~3.2 seconds (+1 second)
+├─ Cost: ~$0.0025-0.011 (+$0.0005)
+├─ Context sent to generation: 2 docs (1000 tokens)
+└─ Response quality: Higher, more focused
+
+Net Effect:
+- Adds 1 second latency
+- Adds $0.0005 compression cost
+- Saves ~$0.001-0.003 on generation (smaller context)
+- Improves response quality significantly
+- Overall: Slight cost increase, better quality
 ```
 
 ---
@@ -906,61 +984,41 @@ When presenting this diagram in an interview, emphasize:
    - Example: "tell me more" → "tell me more about Samsung Galaxy A54"
    - Enables accurate retrieval for context-dependent queries
 
-3. **Efficiency**: Minimal LLM usage
-   - Standard queries: ONE LLM call (generation only)
-   - Follow-up queries: TWO LLM calls (reformulation + generation)
-   - Everything else is deterministic logic
-   - Keeps costs low and latency manageable
+3. **LLM Usage Strategy**: Balanced approach
+   - Standard queries: 4-6 LLM calls total
+     * Context compression: 3-5 calls (one per doc)
+     * Generation: 1 call
+   - Follow-up queries: 5-7 LLM calls total
+     * Reformulation: 1 call
+     * Context compression: 3-5 calls
+     * Generation: 1 call
+   - Most expensive: Generation (~60% of cost)
+   - Most numerous: Compression (~5 calls but cheap)
 
-4. **Cost Control**: 
-   - Standard query: ~$0.002-0.01 per turn
-   - Follow-up query: ~$0.003-0.011 per turn (adds reformulation)
-   - 70-86% of time still spent in final generation (main bottleneck)
-   - Reformulation adds 19% overhead only for follow-ups
+4. **Context Compression Trade-off**:
+   - Adds ~1 second latency and 5 LLM calls
+   - But improves response quality significantly
+   - Filters out irrelevant documents before generation
+   - Can be disabled for speed-critical applications
+   - Net effect: Slight cost increase, much better quality
 
-5. **Scalability**:
+5. **Cost Control**: 
+   - Standard query: ~$0.0025-0.011 per turn
+   - Follow-up query: ~$0.0035-0.012 per turn
+   - Compression adds ~$0.0005 but saves on generation
+   - Generation still the most expensive single call
+   - Total: 4-7 LLM calls per request (depending on query type)
+
+6. **Scalability**:
    - Deterministic components can handle 1000s req/sec
    - LLM calls are the bottleneck (rate limits, latency)
-   - Could add caching layer for reformulated queries
+   - Compression can be disabled to reduce LLM calls by 80%
+   - Could batch compression calls for better efficiency
    - File-based storage scales well for moderate traffic
 
-6. **Multi-Turn Context**:
+7. **Multi-Turn Context**:
    - History management is deterministic and persistent (fast)
-   - LLM sees full conversation context
+   - LLM sees full conversation context in generation
    - Follow-up detection uses history without extra LLM calls
    - Conversation continuity across server restarts
-
----
-
-## 11. Interview Talking Points
-
-When presenting this diagram in an interview, emphasize:
-
-1. **Efficiency**: Only ONE LLM call per request (the generation step)
-   - Everything else is deterministic logic
-   - Keeps costs low and latency manageable
-
-2. **Smart Routing**: Router uses keyword matching, not LLM
-   - Fast decision making (<1ms)
-   - No API costs for routing
-   - Could upgrade to ML classifier if needed (still not LLM)
-
-3. **RAG Benefits**: Retrieval is separate from generation
-   - Can cache retrieval results
-   - Can optimize vector search independently
-   - Can A/B test different retrieval strategies
-
-4. **Cost Control**: 
-   - ~$0.002-0.01 per conversation turn
-   - 86% of time spent in LLM call (unavoidable)
-   - 14% in deterministic operations (optimizable)
-
-5. **Scalability**:
-   - Deterministic components can handle 1000s req/sec
-   - LLM is the bottleneck (rate limits, latency)
-   - Could add caching layer for common queries
-
-6. **Multi-Turn Context**:
-   - History management is deterministic (fast)
-   - LLM sees full conversation context
-   - No need for separate "memory" LLM calls
+   - Reformulation only triggered when needed (not every turn)
