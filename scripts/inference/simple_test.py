@@ -125,7 +125,17 @@ def print_conversation_history(pipeline, session_id: str):
         for i, message in enumerate(history, 1):
             role_emoji = "👤" if message.role == "user" else "🤖"
             print(f"  [{i}] {role_emoji} {message.role.title()}: {message.content}")
-            print(f"      ⏰ {message.timestamp.strftime('%H:%M:%S')}")
+            # Handle timestamp as string (ISO format)
+            if isinstance(message.timestamp, str):
+                # Parse ISO timestamp and format it
+                from datetime import datetime
+                try:
+                    ts = datetime.fromisoformat(message.timestamp.replace('Z', '+00:00'))
+                    print(f"      ⏰ {ts.strftime('%H:%M:%S')}")
+                except:
+                    print(f"      ⏰ {message.timestamp}")
+            else:
+                print(f"      ⏰ {message.timestamp.strftime('%H:%M:%S')}")
             print()
             
     except Exception as e:

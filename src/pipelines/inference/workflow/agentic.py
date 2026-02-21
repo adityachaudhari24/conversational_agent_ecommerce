@@ -15,6 +15,21 @@ from ..config import WorkflowConfig
 from ..exceptions import InferenceError
 from ..generation.generator import ResponseGenerator
 from ..llm.client import LLMClient
+from .reformulator import QueryReformulator
+
+
+# Follow-up detection patterns
+CONTEXTUAL_REFERENCES = [
+    "that", "this", "it", "they", "them", "those", "these",
+    "the one", "the same", "which one",
+]
+
+FOLLOW_UP_PHRASES = [
+    "tell me more", "more about", "what about", "how about",
+    "how does it", "how do they", "can you compare",
+    "what's the difference", "is it better", "any other",
+    "similar to", "like that", "another option",
+]
 
 
 class AgentState(TypedDict):
@@ -28,11 +43,13 @@ class AgentState(TypedDict):
         context: Retrieved context from the retrieval pipeline
         route: Routing decision ("retrieve", "tool", "respond")
         tool_result: Result from tool execution
+        reformulated_query: Reformulated query for follow-up retrieval
     """
     messages: Annotated[Sequence[BaseMessage], add_messages]
     context: str
     route: str
     tool_result: str
+    reformulated_query: str
 
 
 class AgenticWorkflow:
@@ -74,6 +91,7 @@ class AgenticWorkflow:
         self.llm_client = llm_client
         self.retriever = retrieval_pipeline
         self.generator = response_generator
+        self.reformulator = QueryReformulator(llm_client)
         
         # Build and compile the workflow
         self.workflow = self._build_workflow()
@@ -90,6 +108,7 @@ class AgenticWorkflow:
         
         # Add nodes
         workflow.add_node("router", self._router_node)
+        workflow.add_node("reformulator", self._reformulator_node)
         workflow.add_node("retriever", self._retriever_node)
         workflow.add_node("tool", self._tool_node)
         workflow.add_node("generator", self._generator_node)
@@ -102,11 +121,15 @@ class AgenticWorkflow:
             "router",
             self._route_decision,
             {
+                "reformulator": "reformulator",
                 "retriever": "retriever",
                 "tool": "tool",
                 "generator": "generator"
             }
         )
+        
+        # Add edge from reformulator to retriever
+        workflow.add_edge("reformulator", "retriever")
         
         # Add edges from retriever and tool to generator
         workflow.add_edge("retriever", "generator")
@@ -153,20 +176,82 @@ class AgenticWorkflow:
         if any(keyword in query_lower for keyword in self.config.product_keywords):
             return {"route": "retrieve"}
         
+        # Check for follow-up queries when no explicit keywords found
+        # Get conversation history (excluding the current user message)
+        history = []
+        for msg in state["messages"][:-1]:  # Exclude the last message (current query)
+            if not isinstance(msg, SystemMessage):  # Exclude system messages
+                history.append(msg)
+        
+        if self._is_follow_up_query(user_message, history):
+            return {"route": "retrieve_followup"}
+        
         # Default to direct response for general queries
         return {"route": "respond"}
     
-    def _retriever_node(self, state: AgentState) -> Dict[str, Any]:
-        """Retrieve relevant documents using retrieval pipeline.
+    def _is_follow_up_query(self, query: str, history: List[BaseMessage]) -> bool:
+        """Detect if query is a follow-up referencing prior product context.
         
-        This node uses the retrieval pipeline to find relevant documents
-        for the user query and adds the formatted context to the state.
+        This method checks two conditions:
+        1. Query contains contextual references (pronouns, follow-up phrases)
+        2. Recent assistant messages contain product-related content
+        
+        Args:
+            query: The user query to analyze
+            history: Recent conversation history
+            
+        Returns:
+            True if the query is a follow-up to product-related conversation
+        """
+        if not history:
+            return False
+        
+        query_lower = query.lower()
+        
+        # Check if query contains contextual references
+        has_contextual_ref = any(
+            ref in query_lower for ref in CONTEXTUAL_REFERENCES
+        )
+        
+        # Check if query contains follow-up phrases
+        has_follow_up_phrase = any(
+            phrase in query_lower for phrase in FOLLOW_UP_PHRASES
+        )
+        
+        # Query must have at least one contextual indicator
+        if not (has_contextual_ref or has_follow_up_phrase):
+            return False
+        
+        # Check if recent assistant messages contain product-related content
+        # Look at the last few assistant messages (up to 3)
+        recent_assistant_messages = []
+        for msg in reversed(history):
+            if isinstance(msg, AIMessage):
+                recent_assistant_messages.append(msg.content.lower())
+                if len(recent_assistant_messages) >= 3:
+                    break
+        
+        # Check if any recent assistant message contains product keywords
+        has_product_context = False
+        for msg_content in recent_assistant_messages:
+            if any(keyword in msg_content for keyword in self.config.product_keywords):
+                has_product_context = True
+                break
+        
+        return has_product_context
+    
+    def _reformulator_node(self, state: AgentState) -> Dict[str, Any]:
+        """Reformulate follow-up query using conversation history.
+        
+        This node uses the QueryReformulator to rewrite ambiguous follow-up queries
+        into standalone queries with explicit product/topic references extracted
+        from conversation history.
         
         Args:
             state: Current workflow state
             
         Returns:
-            Updated state with retrieved context
+            Updated state with reformulated query
         """
         # Get the latest user message
         user_message = None
@@ -176,11 +261,55 @@ class AgenticWorkflow:
                 break
         
         if not user_message:
-            return {"context": ""}
+            return {"reformulated_query": ""}
+        
+        # Get conversation history (excluding the current user message)
+        history = []
+        for msg in state["messages"][:-1]:  # Exclude the last message (current query)
+            if not isinstance(msg, SystemMessage):  # Exclude system messages
+                history.append(msg)
+        
+        try:
+            # Reformulate the query using conversation history
+            reformulated = self.reformulator.reformulate(user_message, history)
+            return {"reformulated_query": reformulated}
+            
+        except Exception as e:
+            # On error, use original query
+            return {"reformulated_query": user_message}
+    
+    def _retriever_node(self, state: AgentState) -> Dict[str, Any]:
+        """Retrieve relevant documents using retrieval pipeline.
+        
+        This node uses the retrieval pipeline to find relevant documents
+        for the user query and adds the formatted context to the state.
+        Uses the reformulated query if available (from follow-up detection).
+        
+        Args:
+            state: Current workflow state
+            
+        Returns:
+            Updated state with retrieved context
+        """
+        # Check if we have a reformulated query (from follow-up detection)
+        query_to_use = state.get("reformulated_query", "")
+        
+        # If no reformulated query, get the latest user message
+        if not query_to_use:
+            user_message = None
+            for msg in reversed(state["messages"]):
+                if isinstance(msg, HumanMessage):
+                    user_message = msg.content
+                    break
+            
+            if not user_message:
+                return {"context": ""}
+            
+            query_to_use = user_message
         
         try:
             # Use the retrieval pipeline to get relevant documents
-            retrieval_result = self.retriever.retrieve(user_message)
+            retrieval_result = self.retriever.retrieve(query_to_use)
             context = retrieval_result.formatted_context
             
             return {"context": context}
@@ -287,7 +416,7 @@ For now, this serves as a placeholder showing the workflow structure."""
             )
             return {"messages": [AIMessage(content=error_response)]}
     
-    def _route_decision(self, state: AgentState) -> Literal["retriever", "tool", "generator"]:
+    def _route_decision(self, state: AgentState) -> Literal["reformulator", "retriever", "tool", "generator"]:
         """Conditional edge: decide next node based on route.
         
         This function is used by LangGraph to determine which node to visit
@@ -301,7 +430,9 @@ For now, this serves as a placeholder showing the workflow structure."""
         """
         route = state.get("route", "respond")
         
-        if route == "retrieve":
+        if route == "retrieve_followup":
+            return "reformulator"
+        elif route == "retrieve":
             return "retriever"
         elif route == "tool":
             return "tool"
@@ -332,7 +463,8 @@ For now, this serves as a placeholder showing the workflow structure."""
                 "messages": messages,
                 "context": "",
                 "route": "",
-                "tool_result": ""
+                "tool_result": "",
+                "reformulated_query": ""
             }
             
             # Execute the workflow
@@ -380,7 +512,8 @@ For now, this serves as a placeholder showing the workflow structure."""
                 "messages": messages,
                 "context": "",
                 "route": "",
-                "tool_result": ""
+                "tool_result": "",
+                "reformulated_query": ""
             }
             
             # Execute the workflow asynchronously

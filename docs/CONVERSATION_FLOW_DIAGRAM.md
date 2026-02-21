@@ -61,27 +61,28 @@ This document provides a visual representation of the complete data flow and pro
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  STEP 1: CONVERSATION MANAGER  🔵 DETERMINISTIC              │
-│  (src/pipelines/inference/conversation/manager.py)           │
+│  STEP 1: CONVERSATION STORE  🔵 DETERMINISTIC                │
+│  (src/pipelines/inference/conversation/store.py)             │
 ├──────────────────────────────────────────────────────────────┤
 │                                                               │
 │  Input: User Query + Session ID                              │
 │                                                               │
 │  ┌─────────────────────────────────────────────┐            │
-│  │ 1. Load Conversation History                │            │
-│  │    - Retrieve from session store             │            │
-│  │    - Get last N turns (configurable)         │            │
+│  │ 1. Load Conversation History from Disk      │            │
+│  │    - Read from data/sessions/*.json          │            │
+│  │    - Get last N turns (max_history_length)   │            │
+│  │    - File-based persistence with fcntl locks │            │
 │  └─────────────────────────────────────────────┘            │
 │                                                               │
 │  ┌─────────────────────────────────────────────┐            │
-│  │ 2. Build Conversation Context                │            │
+│  │ 2. Convert to LangChain Messages             │            │
 │  │    - Format: [                                │            │
-│  │        {"role": "user", "content": "..."},   │            │
-│  │        {"role": "assistant", "content": "..."}│           │
+│  │        HumanMessage(content="..."),          │            │
+│  │        AIMessage(content="...")              │            │
 │  │      ]                                        │            │
 │  └─────────────────────────────────────────────┘            │
 │                                                               │
-│  Output: Conversation History + Current Query                │
+│  Output: LangChain Messages + Current Query                  │
 └───────────────────────────┬──────────────────────────────────┘
                             │
                             ▼
@@ -91,34 +92,58 @@ This document provides a visual representation of the complete data flow and pro
 ├──────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌─────────────────────────────────────────────┐            │
-│  │ 2.1 Router Node (Keyword-Based)             │            │
-│  │     🔵 NO LLM - Simple string matching       │            │
+│  │ 2.1 Router Node (History-Aware)             │            │
+│  │     🔵 NO LLM - Pattern matching + history   │            │
 │  │                                              │            │
-│  │     Checks query for keywords:               │            │
-│  │     • Tool keywords: ["compare"]             │            │
-│  │     • Product keywords: ["price", "review",  │            │
-│  │       "product", "recommend", "rating",      │            │
-│  │       "phone", "buy", "cost", "feature"]     │            │
-│  │                                              │            │
-│  │     Logic:                                   │            │
-│  │     if "compare" in query → route="tool"     │            │
-│  │     elif product_keyword in query →          │            │
-│  │          route="retrieve"                    │            │
-│  │     else → route="respond"                   │            │
+│  │     Routing logic (priority order):          │            │
+│  │     1. Tool keywords: ["compare"]            │            │
+│  │        → route="tool"                        │            │
+│  │     2. Product keywords: ["price", "review", │            │
+│  │        "product", "phone", "buy", etc.]      │            │
+│  │        → route="retrieve"                    │            │
+│  │     3. Follow-up detected:                   │            │
+│  │        - Contextual refs ("that", "it")      │            │
+│  │        - Follow-up phrases ("tell me more")  │            │
+│  │        - Product context in history          │            │
+│  │        → route="retrieve_followup"           │            │
+│  │     4. Default → route="respond"             │            │
 │  └─────────────────────────────────────────────┘            │
 │                            │                                  │
 │                            ▼                                  │
 │  ┌─────────────────────────────────────────────┐            │
 │  │ 2.2 Routing Decision                         │            │
 │  └─────────────────────────────────────────────┘            │
-│              │                    │                           │
-│         YES  │                    │ NO                        │
-│              ▼                    ▼                           │
-│  ┌──────────────────┐   ┌──────────────────┐               │
-│  │ Retrieval Path   │   │ Direct Response  │               │
-│  │ (Go to Step 3)   │   │ (Go to Step 5)   │               │
-│  └──────────────────┘   └──────────────────┘               │
+│         │              │              │                       │
+│    Follow-up      Retrieval       Tool/Direct                │
+│         ▼              ▼              ▼                       │
+│  ┌──────────┐   ┌──────────┐   ┌──────────┐               │
+│  │Reformulate│   │ Retrieve │   │Tool/Gen  │               │
+│  │(Step 2.5) │   │(Step 3)  │   │(Step 5)  │               │
+│  └──────────┘   └──────────┘   └──────────┘               │
 └──────────────────────────────────────────────────────────────┘
+                            │
+                            ▼
+┌──────────────────────────────────────────────────────────────┐
+│  STEP 2.5: QUERY REFORMULATION  🟢 LLM CALL                 │
+│  (src/pipelines/inference/workflow/reformulator.py)          │
+├──────────────────────────────────────────────────────────────┤
+│                                                               │
+│  ┌─────────────────────────────────────────────┐            │
+│  │ Query Reformulator  🟢 LLM CALL              │            │
+│  │     - Triggered for follow-up queries        │            │
+│  │     - Uses LLM to rewrite ambiguous queries  │            │
+│  │     - Extracts explicit refs from history    │            │
+│  │     - Example:                               │            │
+│  │       "tell me more about that one"          │            │
+│  │       → "tell me more about Samsung A54"     │            │
+│  │                                              │            │
+│  │     ⚡ SECOND LLM CALL (for follow-ups)      │            │
+│  │     💰 Adds ~$0.001 per follow-up            │            │
+│  │     ⏱️  Takes ~500ms                          │            │
+│  └─────────────────────────────────────────────┘            │
+│                                                               │
+│  Output: Reformulated Query → Retrieval Pipeline             │
+└───────────────────────────┬──────────────────────────────────┘
                             │
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
@@ -136,12 +161,12 @@ This document provides a visual representation of the complete data flow and pro
 │                            │                                  │
 │                            ▼                                  │
 │  ┌─────────────────────────────────────────────┐            │
-│  │ 3.2 Query Rewriting (Optional)  🟢 LLM CALL │            │
-│  │     (processors/query_rewriter.py)           │            │
-│  │     - Reformulate for better retrieval       │            │
-│  │     - Expand with synonyms                   │            │
-│  │     - Add context from history               │            │
-│  │     ⚠️  Currently not implemented in MVP     │            │
+│  │ 3.2 Query Enhancement  🔵 DETERMINISTIC      │            │
+│  │     (processors/query_processor.py)          │            │
+│  │     - Uses reformulated query if available   │            │
+│  │     - Query from Step 2.5 for follow-ups     │            │
+│  │     - Original query for direct retrieval    │            │
+│  │     ✅ Implemented via QueryReformulator     │            │
 │  └─────────────────────────────────────────────┘            │
 │                            │                                  │
 │                            ▼                                  │
@@ -245,22 +270,24 @@ This document provides a visual representation of the complete data flow and pro
                             ▼
 ┌──────────────────────────────────────────────────────────────┐
 │  STEP 6: CONVERSATION UPDATE  🔵 DETERMINISTIC               │
-│  (src/pipelines/inference/conversation/manager.py)           │
+│  (src/pipelines/inference/conversation/store.py)             │
 ├──────────────────────────────────────────────────────────────┤
 │                                                               │
 │  ┌─────────────────────────────────────────────┐            │
 │  │ 6.1 Update Conversation History              │            │
 │  │     - Append user message                    │            │
 │  │     - Append assistant response              │            │
-│  │     - Add metadata (timestamp, sources)      │            │
+│  │     - Add timestamp (ISO 8601 format)        │            │
+│  │     - Update session updated_at              │            │
 │  └─────────────────────────────────────────────┘            │
 │                            │                                  │
 │                            ▼                                  │
 │  ┌─────────────────────────────────────────────┐            │
-│  │ 6.2 Save to Session Store                    │            │
-│  │     (api/services/session_store.py)          │            │
-│  │     - Persist conversation state             │            │
-│  │     - Update session metadata                │            │
+│  │ 6.2 Persist to Disk (Unified Store)         │            │
+│  │     (ConversationStore)                      │            │
+│  │     - Write to data/sessions/*.json          │            │
+│  │     - Use fcntl exclusive lock               │            │
+│  │     - Immediate persistence (no cache)       │            │
 │  └─────────────────────────────────────────────┘            │
 │                                                               │
 └───────────────────────────┬──────────────────────────────────┘
@@ -487,44 +514,39 @@ Layer 8: Final Output
 │              SESSION STATE MANAGEMENT                       │
 └─────────────────────────────────────────────────────────────┘
 
-Session Store Structure:
-────────────────────────
+Session Store Structure (ConversationStore):
+────────────────────────────────────────────
 {
   "session_id": "sess_20260220_163036_abc123",
   "created_at": "2026-02-20T16:30:36Z",
   "updated_at": "2026-02-20T16:35:42Z",
-  "user_id": "user_xyz",
-  "conversation_history": [
+  "messages": [
     {
-      "turn": 1,
-      "timestamp": "2026-02-20T16:30:36Z",
-      "user_message": "Show me smartphones under $500",
-      "assistant_response": "Here are 5 smartphones...",
-      "retrieved_docs": [
-        {"doc_id": "doc_123", "score": 0.92},
-        {"doc_id": "doc_456", "score": 0.87}
-      ],
-      "metadata": {
-        "processing_time_ms": 1250,
-        "model": "gpt-4",
-        "tokens_used": 850
-      }
+      "role": "user",
+      "content": "Show me smartphones under $500",
+      "timestamp": "2026-02-20T16:30:36Z"
     },
     {
-      "turn": 2,
-      "timestamp": "2026-02-20T16:32:15Z",
-      "user_message": "Which one has the best camera?",
-      "assistant_response": "Among those 5 phones...",
-      "retrieved_docs": [...],
-      "metadata": {...}
+      "role": "assistant",
+      "content": "Here are 5 smartphones under $500: Samsung Galaxy A54...",
+      "timestamp": "2026-02-20T16:30:38Z"
+    },
+    {
+      "role": "user",
+      "content": "Which one has the best camera?",
+      "timestamp": "2026-02-20T16:32:15Z"
+    },
+    {
+      "role": "assistant",
+      "content": "Among those 5 phones, the Samsung Galaxy A54 has the best camera...",
+      "timestamp": "2026-02-20T16:32:17Z"
     }
-  ],
-  "context_summary": {
-    "topic": "smartphone_search",
-    "constraints": {"price": "<500"},
-    "mentioned_products": ["Product A", "Product B", "Product C"]
-  }
+  ]
 }
+
+Note: Simplified format compared to old dual-storage system.
+No separate turn numbers, retrieved_docs, or metadata per message.
+This is the single source of truth for conversation history.
 
 State Transitions:
 ──────────────────
@@ -561,9 +583,10 @@ New Session → Active → Idle → Archived
 │         Inference Pipeline                       │
 │  ┌────────────┐  ┌────────────┐  ┌───────────┐ │
 │  │Conversation│→ │  Agentic   │→ │ Retrieval │ │
-│  │  Manager   │  │  Workflow  │  │  Pipeline │ │
-│  └────────────┘  └────────────┘  └─────┬─────┘ │
-│                                         │        │
+│  │   Store    │  │  Workflow  │  │  Pipeline │ │
+│  │  (Unified) │  │  +Router   │  │           │ │
+│  └────────────┘  │+Reformulate│  └─────┬─────┘ │
+│                  └────────────┘        │        │
 │  ┌────────────┐  ┌────────────┐       │        │
 │  │ Generation │← │ Grounding  │←──────┘        │
 │  │  Pipeline  │  │  Module    │                 │
@@ -574,9 +597,10 @@ New Session → Active → Idle → Archived
 ┌──────────────────────────────────────────────────┐
 │         External Services                        │
 │  ┌────────────┐  ┌────────────┐  ┌───────────┐ │
-│  │   LLM API  │  │  Vector DB │  │  Session  │ │
+│  │   LLM API  │  │  Vector DB │  │Conversation│ │
 │  │ (OpenAI/   │  │ (ChromaDB/ │  │   Store   │ │
-│  │ Anthropic) │  │  Pinecone) │  │  (JSON)   │ │
+│  │ Anthropic) │  │  Pinecone) │  │   (JSON   │ │
+│  │            │  │            │  │   Files)  │ │
 │  └────────────┘  └────────────┘  └───────────┘ │
 └──────────────────────────────────────────────────┘
 ```
@@ -737,13 +761,15 @@ The system is designed to handle complex, multi-turn conversations while maintai
 
 🔵 DETERMINISTIC LOGIC (No LLM, Fast, Free)
 ────────────────────────────────────────────
-✓ Conversation Manager
-  - Loading history from JSON files
-  - Formatting messages
-  - Session management
+✓ Conversation Store (Unified)
+  - Loading history from JSON files (data/sessions/*.json)
+  - Converting to LangChain messages
+  - Session management with fcntl file locking
+  - Immediate persistence on message add
   
 ✓ Router Node (Agentic Workflow)
   - Keyword matching: if "price" in query → retrieve
+  - Follow-up detection: pattern matching + history check
   - Simple string operations
   - No AI/ML involved
   - Instant decision (<1ms)
@@ -785,7 +811,7 @@ The system is designed to handle complex, multi-turn conversations while maintai
 🟢 LLM API CALLS (Slow, Costs Money)
 ────────────────────────────────────
 ✓ Response Generation (Step 5.1)
-  - THE ONLY LLM CALL in the entire pipeline
+  - PRIMARY LLM CALL in the pipeline
   - Sends complete prompt to OpenAI/Anthropic
   - Receives generated text response
   - Time: 1-2 seconds (depends on response length)
@@ -805,34 +831,44 @@ The system is designed to handle complex, multi-turn conversations while maintai
     "max_tokens": 2048
   }
 
-⚠️  OPTIONAL LLM CALLS (Not in MVP)
-────────────────────────────────────
-✗ Query Rewriting (Step 3.2)
-  - Could use LLM to reformulate queries
-  - Currently NOT implemented
-  - Would add ~500ms and extra cost
+✓ Query Reformulation (Step 2.5) - NEW!
+────────────────────────────────────────
+✓ Query Reformulator (for follow-ups)
+  - SECOND LLM CALL (only for follow-up queries)
+  - Rewrites ambiguous queries with explicit refs
+  - Example: "tell me more" → "tell me more about Samsung A54"
+  - Time: ~500ms
+  - Cost: ~$0.001 per follow-up
+  - ✅ NOW IMPLEMENTED (not in original MVP)
 
 
 COST & PERFORMANCE IMPLICATIONS
 ────────────────────────────────
-Total Pipeline Time: ~2.2 seconds
+Standard Query Pipeline Time: ~2.2 seconds
 ├─ Deterministic operations: ~200ms (9%)
 ├─ Vector search: ~100ms (5%)
 └─ LLM generation: ~1900ms (86%)  ← BOTTLENECK
 
-Total Cost per Request: ~$0.002-0.01
-├─ Deterministic operations: $0 (free)
-├─ Vector search: ~$0.0001 (embedding model)
-└─ LLM generation: ~$0.002-0.01  ← MAIN COST
+Follow-Up Query Pipeline Time: ~2.7 seconds
+├─ Deterministic operations: ~200ms (7%)
+├─ Query reformulation (LLM): ~500ms (19%)  ← NEW!
+├─ Vector search: ~100ms (4%)
+└─ LLM generation: ~1900ms (70%)  ← STILL MAIN BOTTLENECK
 
-KEY INSIGHT:
-The entire RAG pipeline is deterministic EXCEPT for the final
-generation step. This means:
-- Routing is fast and free (keyword matching)
+Total Cost per Request:
+├─ Standard query: ~$0.002-0.01
+│  └─ LLM generation: ~$0.002-0.01
+├─ Follow-up query: ~$0.003-0.011
+│  ├─ Query reformulation: ~$0.001
+│  └─ LLM generation: ~$0.002-0.01
+
+KEY INSIGHTS:
+- Most of the pipeline is still deterministic (fast & free)
+- Follow-up queries add ONE extra LLM call for reformulation
+- Routing with follow-up detection is still deterministic (free)
 - Retrieval is fast and cheap (vector search)
-- Only the final response generation uses expensive LLM
-- You could cache responses for identical queries
-- You could optimize by skipping LLM for simple queries
+- Two LLM calls for follow-ups: reformulation + generation
+- Could cache reformulated queries for repeated patterns
 
 
 COMPARISON: LLM-Based Router vs Keyword Router
@@ -843,13 +879,56 @@ COMPARISON: LLM-Based Router vs Keyword Router
    - Time: +500-1000ms per request
    - More accurate but expensive
 
-✅ Keyword-Based Router (USED in this system):
-   - Simple string matching
-   - Cost: $0
+✅ History-Aware Keyword Router (USED in this system):
+   - Pattern matching + conversation history analysis
+   - Cost: $0 (deterministic)
    - Time: <1ms
-   - Good enough for most cases
-   - Can be improved with regex/NLP without LLM
+   - Detects follow-ups without LLM
+   - Triggers reformulation only when needed
+   - Good balance of accuracy and efficiency
 ```
+
+---
+
+## 11. Interview Talking Points
+
+When presenting this diagram in an interview, emphasize:
+
+1. **Unified Storage Architecture**: Single source of truth
+   - Eliminated dual-storage desynchronization bug
+   - ConversationStore replaces both in-memory and file-based stores
+   - Immediate disk persistence with fcntl locking
+   - Survives server restarts seamlessly
+
+2. **Smart Follow-Up Handling**: Two-stage approach
+   - Router detects follow-ups using deterministic patterns (free, <1ms)
+   - QueryReformulator adds LLM call only when needed (~$0.001, ~500ms)
+   - Example: "tell me more" → "tell me more about Samsung Galaxy A54"
+   - Enables accurate retrieval for context-dependent queries
+
+3. **Efficiency**: Minimal LLM usage
+   - Standard queries: ONE LLM call (generation only)
+   - Follow-up queries: TWO LLM calls (reformulation + generation)
+   - Everything else is deterministic logic
+   - Keeps costs low and latency manageable
+
+4. **Cost Control**: 
+   - Standard query: ~$0.002-0.01 per turn
+   - Follow-up query: ~$0.003-0.011 per turn (adds reformulation)
+   - 70-86% of time still spent in final generation (main bottleneck)
+   - Reformulation adds 19% overhead only for follow-ups
+
+5. **Scalability**:
+   - Deterministic components can handle 1000s req/sec
+   - LLM calls are the bottleneck (rate limits, latency)
+   - Could add caching layer for reformulated queries
+   - File-based storage scales well for moderate traffic
+
+6. **Multi-Turn Context**:
+   - History management is deterministic and persistent (fast)
+   - LLM sees full conversation context
+   - Follow-up detection uses history without extra LLM calls
+   - Conversation continuity across server restarts
 
 ---
 

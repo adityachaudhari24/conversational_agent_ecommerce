@@ -9,18 +9,18 @@ from ..models.schemas import (
     SessionListResponse,
     MessageResponse,
 )
-from ..dependencies import get_session_store
-from ..services.session_store import SessionStore
+from ..dependencies import get_conversation_store
+from src.pipelines.inference.conversation.store import ConversationStore
 
 router = APIRouter(tags=["sessions"])
 
 
 @router.post("/sessions", response_model=SessionResponse)
 async def create_session(
-    session_store: SessionStore = Depends(get_session_store)
+    conversation_store: ConversationStore = Depends(get_conversation_store)
 ) -> SessionResponse:
     """Create a new chat session."""
-    session = session_store.create_session()
+    session = conversation_store.create_session()
     
     return SessionResponse(
         session_id=session.session_id,
@@ -33,10 +33,10 @@ async def create_session(
 
 @router.get("/sessions", response_model=SessionListResponse)
 async def list_sessions(
-    session_store: SessionStore = Depends(get_session_store)
+    conversation_store: ConversationStore = Depends(get_conversation_store)
 ) -> SessionListResponse:
     """List all sessions sorted by most recent first."""
-    sessions = session_store.list_sessions()
+    sessions = conversation_store.list_sessions()
     
     session_responses = [
         SessionResponse(
@@ -58,10 +58,10 @@ async def list_sessions(
 @router.get("/sessions/{session_id}", response_model=SessionDetailResponse)
 async def get_session(
     session_id: str,
-    session_store: SessionStore = Depends(get_session_store)
+    conversation_store: ConversationStore = Depends(get_conversation_store)
 ) -> SessionDetailResponse:
     """Get a specific session with all messages."""
-    session = session_store.get_session(session_id)
+    session = conversation_store.get_session(session_id)
     
     if session is None:
         raise HTTPException(
@@ -89,10 +89,10 @@ async def get_session(
 @router.delete("/sessions/{session_id}")
 async def delete_session(
     session_id: str,
-    session_store: SessionStore = Depends(get_session_store)
+    conversation_store: ConversationStore = Depends(get_conversation_store)
 ) -> dict:
     """Delete a session (optional endpoint)."""
-    deleted = session_store.delete_session(session_id)
+    deleted = conversation_store.delete_session(session_id)
     
     if not deleted:
         raise HTTPException(

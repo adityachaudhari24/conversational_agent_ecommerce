@@ -1,5 +1,5 @@
 """Conversation management components for the inference pipeline."""
 
-from .manager import ConversationManager, Message, Session
+from .store import ConversationStore, Session, SessionMessage
 
-__all__ = ["ConversationManager", "Message", "Session"]
+__all__ = ["ConversationStore", "Session", "SessionMessage"]

@@ -7,7 +7,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from .config import settings
-from .dependencies import set_inference_pipeline
+from .dependencies import set_inference_pipeline, set_conversation_store
 from .routes import chat_router, sessions_router, health_router
 
 # Configure logging
@@ -25,16 +25,71 @@ async def lifespan(app: FastAPI):
     logger.info("Starting E-Commerce Chat API...")
     
     try:
-        # Initialize inference pipeline
+        # Initialize retrieval pipeline
         from src.pipelines.retrieval.pipeline import RetrievalPipeline
-        from src.pipelines.inference.pipeline import InferencePipeline
+        from src.pipelines.inference.pipeline import InferencePipeline, InferenceConfig
+        from src.pipelines.inference.config import create_settings_from_yaml
+        from src.pipelines.inference.conversation.store import ConversationStore
+        from src.pipelines.inference.config import (
+            LLMConfig,
+            ConversationConfig,
+            GeneratorConfig,
+            WorkflowConfig
+        )
         
         logger.info("Initializing retrieval pipeline...")
         retrieval_pipeline = RetrievalPipeline.from_config_file()
         retrieval_pipeline.initialize()
         
+        logger.info("Loading inference configuration...")
+        settings = create_settings_from_yaml()
+        
+        # Create component configurations
+        llm_config = LLMConfig(
+            provider=settings.llm.provider,
+            model_name=settings.llm.model_name,
+            temperature=settings.llm.temperature,
+            max_tokens=settings.llm.max_tokens,
+            api_key=settings.get_api_key()
+        )
+        
+        conversation_config = ConversationConfig(
+            max_history_length=settings.conversation.max_history_length,
+            storage_dir=settings.conversation.storage_dir
+        )
+        
+        generator_config = GeneratorConfig(
+            system_prompt=settings.generator.system_prompt,
+            max_context_tokens=settings.generator.max_context_tokens
+        )
+        
+        workflow_config = WorkflowConfig(
+            product_keywords=settings.workflow.product_keywords,
+            tool_keywords=settings.workflow.tool_keywords
+        )
+        
+        # Create main pipeline configuration
+        pipeline_config = InferenceConfig(
+            llm_config=llm_config,
+            conversation_config=conversation_config,
+            generator_config=generator_config,
+            workflow_config=workflow_config,
+            enable_streaming=settings.enable_streaming,
+            max_retries=settings.max_retries,
+            timeout_seconds=settings.timeout_seconds
+        )
+        
+        # Create ConversationStore instance
+        logger.info("Initializing conversation store...")
+        conversation_store = ConversationStore(
+            storage_dir=conversation_config.storage_dir,
+            max_history_length=conversation_config.max_history_length
+        )
+        set_conversation_store(conversation_store)
+        
+        # Create inference pipeline with conversation store
         logger.info("Initializing inference pipeline...")
-        inference_pipeline = InferencePipeline.from_config_file(retrieval_pipeline)
+        inference_pipeline = InferencePipeline(pipeline_config, retrieval_pipeline, conversation_store)
         inference_pipeline.initialize()
         
         set_inference_pipeline(inference_pipeline)

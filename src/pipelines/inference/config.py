@@ -52,6 +52,7 @@ class ConversationConfig(BaseSettings):
     
     Attributes:
         max_history_length: Maximum number of messages to retain in history
+        storage_dir: Directory path for storing conversation session files
     """
     
     model_config = SettingsConfigDict(
@@ -63,6 +64,10 @@ class ConversationConfig(BaseSettings):
         default=10,
         gt=0,
         description="Maximum messages in conversation history"
+    )
+    storage_dir: str = Field(
+        default="data/sessions",
+        description="Directory for conversation session storage"
     )
 
 

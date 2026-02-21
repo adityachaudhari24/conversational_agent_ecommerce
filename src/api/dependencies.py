@@ -1,14 +1,15 @@
 """Dependency injection for FastAPI."""
 
-from functools import lru_cache
 from typing import Optional
 
-from .config import settings
-from .services.session_store import SessionStore
+from src.pipelines.inference.conversation.store import ConversationStore
 
 
 # Global inference pipeline instance (initialized on startup)
 _inference_pipeline = None
+
+# Global conversation store instance (initialized on startup)
+_conversation_store: Optional[ConversationStore] = None
 
 
 def set_inference_pipeline(pipeline) -> None:
@@ -29,11 +30,30 @@ def get_inference_pipeline():
     return _inference_pipeline
 
 
-@lru_cache()
-def get_session_store() -> SessionStore:
-    """Get the session store dependency.
+def set_conversation_store(store: ConversationStore) -> None:
+    """Set the global conversation store instance.
+    
+    Called during application startup.
+    
+    Args:
+        store: ConversationStore instance to use globally
+    """
+    global _conversation_store
+    _conversation_store = store
+
+
+def get_conversation_store() -> ConversationStore:
+    """Get the conversation store dependency.
     
     Returns:
-        SessionStore instance (cached)
+        ConversationStore instance
+        
+    Raises:
+        RuntimeError: If conversation store not initialized
     """
-    return SessionStore(storage_dir=settings.session_dir)
+    if _conversation_store is None:
+        raise RuntimeError(
+            "ConversationStore not initialized. "
+            "Call set_conversation_store() during application startup."
+        )
+    return _conversation_store

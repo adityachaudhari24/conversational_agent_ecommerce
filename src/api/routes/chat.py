@@ -6,8 +6,8 @@ from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 
 from ..models.schemas import ChatRequest, ChatResponse
-from ..dependencies import get_inference_pipeline, get_session_store
-from ..services.session_store import SessionStore
+from ..dependencies import get_inference_pipeline, get_conversation_store
+from src.pipelines.inference.conversation.store import ConversationStore
 
 router = APIRouter(tags=["chat"])
 logger = logging.getLogger(__name__)
@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 async def chat(
     request: ChatRequest,
     inference_pipeline=Depends(get_inference_pipeline),
-    session_store: SessionStore = Depends(get_session_store)
+    conversation_store: ConversationStore = Depends(get_conversation_store)
 ) -> ChatResponse:
     """Send a message and get a response (non-streaming)."""
     logger.info(f"Chat request: session={request.session_id}, query={request.query[:50]}...")
     
     # Verify session exists
-    session = session_store.get_session(request.session_id)
+    session = conversation_store.get_session(request.session_id)
     if session is None:
         raise HTTPException(
             status_code=404,
@@ -39,14 +39,11 @@ async def chat(
     
     try:
         # Generate response using inference pipeline
+        # Pipeline handles message persistence via ConversationStore
         result = await inference_pipeline.agenerate(
             query=request.query,
             session_id=request.session_id
         )
-        
-        # Save messages to session store
-        session_store.add_message(request.session_id, "user", request.query)
-        session_store.add_message(request.session_id, "assistant", result.response)
         
         logger.info(f"Chat response generated: session={request.session_id}, length={len(result.response)}")
         
@@ -68,13 +65,13 @@ async def chat(
 async def chat_stream(
     request: ChatRequest,
     inference_pipeline=Depends(get_inference_pipeline),
-    session_store: SessionStore = Depends(get_session_store)
+    conversation_store: ConversationStore = Depends(get_conversation_store)
 ):
     """Stream a response using Server-Sent Events (SSE)."""
     logger.info(f"Stream request: session={request.session_id}, query={request.query[:50]}...")
     
     # Verify session exists
-    session = session_store.get_session(request.session_id)
+    session = conversation_store.get_session(request.session_id)
     if session is None:
         raise HTTPException(
             status_code=404,
@@ -93,10 +90,8 @@ async def chat_stream(
         complete_response = ""
         
         try:
-            # Save user message first
-            session_store.add_message(request.session_id, "user", request.query)
-            
             # Stream response chunks
+            # Pipeline handles message persistence via ConversationStore
             async for chunk in inference_pipeline.stream(
                 query=request.query,
                 session_id=request.session_id
@@ -105,9 +100,6 @@ async def chat_stream(
                 # SSE format: data: <json>\n\n
                 event_data = json.dumps({"chunk": chunk, "done": False})
                 yield f"data: {event_data}\n\n"
-            
-            # Save complete assistant response
-            session_store.add_message(request.session_id, "assistant", complete_response)
             
             # Send completion event
             completion_data = json.dumps({

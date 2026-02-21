@@ -41,6 +41,10 @@ conversation:
   # Older messages are removed when limit is exceeded
   max_history_length: 10
   
+  # Directory for storing conversation session files
+  # Sessions are persisted to disk for continuity across restarts
+  storage_dir: data/sessions
+  
   # Session timeout in seconds (0 = no timeout)
   # Sessions are automatically cleaned up after this period
   session_timeout_seconds: 3600

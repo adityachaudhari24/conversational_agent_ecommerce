@@ -5,7 +5,7 @@ using Large Language Models with an agentic workflow powered by LangGraph.
 
 Components:
 - LLMClient: Configurable OpenAI LLM client with retry logic
-- ConversationManager: In-memory conversation session management
+- ConversationStore: Unified persistent conversation storage with file-based persistence
 - ResponseGenerator: Prompt construction and response generation
 - AgenticWorkflow: LangGraph-based workflow with Router, Retriever, Tool, and Generator nodes
 - InferencePipeline: Main orchestrator coordinating all components

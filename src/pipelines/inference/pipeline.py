@@ -30,7 +30,7 @@ from .exceptions import (
     TimeoutError
 )
 from .llm.client import LLMClient
-from .conversation.manager import ConversationManager, Message
+from .conversation.store import ConversationStore, SessionMessage
 from .generation.generator import ResponseGenerator
 from .grounding import GroundingConfig
 from .workflow.agentic import AgenticWorkflow
@@ -109,27 +109,28 @@ class InferencePipeline:
         config: Inference pipeline configuration
         retrieval_pipeline: Retrieval pipeline for context fetching
         llm_client: LLM client for API calls
-        conversation_manager: Conversation session manager
+        conversation_store: Conversation store for persistent session management
         response_generator: Response generator with context injection
         agentic_workflow: LangGraph-based agentic workflow
     """
     
-    def __init__(self, config: InferenceConfig, retrieval_pipeline):
+    def __init__(self, config: InferenceConfig, retrieval_pipeline, conversation_store: ConversationStore):
         """Initialize the InferencePipeline with configuration.
         
         Args:
             config: InferenceConfig containing component configurations
             retrieval_pipeline: Initialized retrieval pipeline for context
+            conversation_store: ConversationStore instance for conversation persistence
             
         Raises:
             ConfigurationError: If configuration is invalid
         """
         self.config = config
         self.retrieval_pipeline = retrieval_pipeline
+        self.conversation_store = conversation_store
         
         # Initialize components (will be set up in initialize())
         self.llm_client: Optional[LLMClient] = None
-        self.conversation_manager: Optional[ConversationManager] = None
         self.response_generator: Optional[ResponseGenerator] = None
         self.agentic_workflow: Optional[AgenticWorkflow] = None
         
@@ -152,9 +153,6 @@ class InferencePipeline:
             # Initialize LLM client
             self.llm_client = LLMClient(self.config.llm_config)
             self.llm_client.initialize()
-            
-            # Initialize conversation manager
-            self.conversation_manager = ConversationManager(self.config.conversation_config)
             
             # Create grounding configuration from generator config
             grounding_config = GroundingConfig(
@@ -224,7 +222,8 @@ class InferencePipeline:
             )
             
             conversation_config = ConversationConfig(
-                max_history_length=settings.conversation.max_history_length
+                max_history_length=settings.conversation.max_history_length,
+                storage_dir=settings.conversation.storage_dir
             )
             
             generator_config = GeneratorConfig(
@@ -248,7 +247,13 @@ class InferencePipeline:
                 timeout_seconds=settings.timeout_seconds
             )
             
-            return cls(pipeline_config, retrieval_pipeline)
+            # Create ConversationStore instance
+            conversation_store = ConversationStore(
+                storage_dir=conversation_config.storage_dir,
+                max_history_length=conversation_config.max_history_length
+            )
+            
+            return cls(pipeline_config, retrieval_pipeline, conversation_store)
             
         except Exception as e:
             raise ConfigurationError(
@@ -411,9 +416,32 @@ class InferencePipeline:
         }
         
         try:
-            # Step 1: Get conversation history
+            # Step 0: Ensure session exists (auto-create if needed)
             step_start = time.time()
-            history = self.conversation_manager.get_langchain_messages(session_id)
+            session = self.conversation_store.get_session(session_id)
+            if session is None:
+                # Create new session with the provided session_id
+                from datetime import datetime
+                now = datetime.utcnow().isoformat() + "Z"
+                from .conversation.store import Session
+                session = Session(
+                    session_id=session_id,
+                    created_at=now,
+                    updated_at=now,
+                    messages=[]
+                )
+                self.conversation_store._save_session(session)
+            step_time = (time.time() - step_start) * 1000
+            
+            metadata['workflow_steps'].append({
+                'step': 'session_initialization',
+                'time_ms': step_time,
+                'session_created': session is None
+            })
+            
+            # Step 1: Get conversation history from ConversationStore (disk-backed)
+            step_start = time.time()
+            history = self.conversation_store.get_langchain_messages(session_id)
             step_time = (time.time() - step_start) * 1000
             
             metadata['workflow_steps'].append({
@@ -433,10 +461,10 @@ class InferencePipeline:
                 'response_length': len(response)
             })
             
-            # Step 3: Update conversation history
+            # Step 3: Persist messages to ConversationStore (writes to disk)
             step_start = time.time()
-            self.conversation_manager.add_message(session_id, "user", query)
-            self.conversation_manager.add_message(session_id, "assistant", response)
+            self.conversation_store.add_message(session_id, "user", query)
+            self.conversation_store.add_message(session_id, "assistant", response)
             step_time = (time.time() - step_start) * 1000
             
             metadata['workflow_steps'].append({
@@ -491,9 +519,32 @@ class InferencePipeline:
         }
         
         try:
-            # Step 1: Get conversation history
+            # Step 0: Ensure session exists (auto-create if needed)
             step_start = time.time()
-            history = self.conversation_manager.get_langchain_messages(session_id)
+            session = self.conversation_store.get_session(session_id)
+            if session is None:
+                # Create new session with the provided session_id
+                from datetime import datetime
+                now = datetime.utcnow().isoformat() + "Z"
+                from .conversation.store import Session
+                session = Session(
+                    session_id=session_id,
+                    created_at=now,
+                    updated_at=now,
+                    messages=[]
+                )
+                self.conversation_store._save_session(session)
+            step_time = (time.time() - step_start) * 1000
+            
+            metadata['workflow_steps'].append({
+                'step': 'session_initialization',
+                'time_ms': step_time,
+                'session_created': session is None
+            })
+            
+            # Step 1: Get conversation history from ConversationStore (disk-backed)
+            step_start = time.time()
+            history = self.conversation_store.get_langchain_messages(session_id)
             step_time = (time.time() - step_start) * 1000
             
             metadata['workflow_steps'].append({
@@ -513,10 +564,10 @@ class InferencePipeline:
                 'response_length': len(response)
             })
             
-            # Step 3: Update conversation history
+            # Step 3: Persist messages to ConversationStore (writes to disk)
             step_start = time.time()
-            self.conversation_manager.add_message(session_id, "user", query)
-            self.conversation_manager.add_message(session_id, "assistant", response)
+            self.conversation_store.add_message(session_id, "user", query)
+            self.conversation_store.add_message(session_id, "assistant", response)
             step_time = (time.time() - step_start) * 1000
             
             metadata['workflow_steps'].append({
@@ -604,8 +655,8 @@ class InferencePipeline:
             # Update conversation history with partial response if we have any
             if partial_response:
                 try:
-                    self.conversation_manager.add_message(session_id, "user", query)
-                    self.conversation_manager.add_message(
+                    self.conversation_store.add_message(session_id, "user", query)
+                    self.conversation_store.add_message(
                         session_id, 
                         "assistant", 
                         f"{partial_response} [Response incomplete due to error]"
@@ -653,8 +704,23 @@ class InferencePipeline:
         complete_response = ""
         
         try:
-            # Step 1: Get conversation history
-            history = self.conversation_manager.get_langchain_messages(session_id)
+            # Step 0: Ensure session exists (auto-create if needed)
+            session = self.conversation_store.get_session(session_id)
+            if session is None:
+                # Create new session with the provided session_id
+                from datetime import datetime
+                now = datetime.utcnow().isoformat() + "Z"
+                from .conversation.store import Session
+                session = Session(
+                    session_id=session_id,
+                    created_at=now,
+                    updated_at=now,
+                    messages=[]
+                )
+                self.conversation_store._save_session(session)
+            
+            # Step 1: Get conversation history from ConversationStore (disk-backed)
+            history = self.conversation_store.get_langchain_messages(session_id)
             
             # Step 2: Prepare context using agentic workflow
             # For streaming, we need to get the context without final generation
@@ -688,8 +754,8 @@ class InferencePipeline:
             
             # Step 4: Update conversation history with complete response
             try:
-                self.conversation_manager.add_message(session_id, "user", query)
-                self.conversation_manager.add_message(session_id, "assistant", complete_response)
+                self.conversation_store.add_message(session_id, "user", query)
+                self.conversation_store.add_message(session_id, "assistant", complete_response)
             except Exception as e:
                 # Log error but don't fail the streaming operation
                 # In a production system, you might want to retry or handle this differently
@@ -699,8 +765,8 @@ class InferencePipeline:
             # If we have a partial response, try to save it to history
             if complete_response:
                 try:
-                    self.conversation_manager.add_message(session_id, "user", query)
-                    self.conversation_manager.add_message(
+                    self.conversation_store.add_message(session_id, "user", query)
+                    self.conversation_store.add_message(
                         session_id, 
                         "assistant", 
                         f"{complete_response} [Response incomplete due to error]"
@@ -768,7 +834,7 @@ class InferencePipeline:
                     }
                 )
     
-    def get_session_history(self, session_id: str) -> List[Message]:
+    def get_session_history(self, session_id: str) -> List[SessionMessage]:
         """Get conversation history for session.
         
         Args:
@@ -786,7 +852,7 @@ class InferencePipeline:
                 error_code="PIPELINE_NOT_INITIALIZED"
             )
         
-        return self.conversation_manager.get_history(session_id)
+        return self.conversation_store.get_history(session_id)
     
     def clear_session(self, session_id: str) -> None:
         """Clear session history.
@@ -803,7 +869,13 @@ class InferencePipeline:
                 error_code="PIPELINE_NOT_INITIALIZED"
             )
         
-        self.conversation_manager.clear_session(session_id)
+        # Check if session exists first
+        session = self.conversation_store.get_session(session_id)
+        if session is None:
+            # Session doesn't exist, nothing to clear - just return silently
+            return
+        
+        self.conversation_store.clear_session(session_id)
     
     def get_pipeline_stats(self) -> Dict[str, Any]:
         """Get comprehensive pipeline statistics and health information.
@@ -825,11 +897,11 @@ class InferencePipeline:
         }
         
         if self._initialized:
-            # Get conversation manager statistics
-            if self.conversation_manager:
-                stats["components"]["conversation_manager"] = {
-                    "active_sessions": self.conversation_manager.get_session_count(),
-                    "session_ids": self.conversation_manager.get_session_ids()
+            # Get conversation store statistics
+            if self.conversation_store:
+                stats["components"]["conversation_store"] = {
+                    "active_sessions": self.conversation_store.get_session_count(),
+                    "session_ids": self.conversation_store.get_session_ids()
                 }
             
             # Get retrieval pipeline statistics if available
@@ -862,7 +934,7 @@ class InferencePipeline:
         # Check each component
         components_to_check = [
             ("llm_client", self.llm_client),
-            ("conversation_manager", self.conversation_manager),
+            ("conversation_store", self.conversation_store),
             ("response_generator", self.response_generator),
             ("agentic_workflow", self.agentic_workflow),
             ("retrieval_pipeline", self.retrieval_pipeline)
